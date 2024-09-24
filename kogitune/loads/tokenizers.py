@@ -229,8 +229,8 @@ class JanomeTokenizer(Tokenizer):
     def __init__(self, path, kwargs):
         self.path = path
         self.pathargs = {}
-        janome = adhoc.safe_import('janome')
-        self.janome = janome.tokenizer.Tokenizer()
+        janome = adhoc.safe_import('janome.tokenizer', 'janome')
+        self.janome = janome.Tokenizer()
 
     def __call__(self, text: str) -> List[str]:
         tokens = [token.surface for token in self.janome.tokenize(text)]

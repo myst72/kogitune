@@ -6,6 +6,3 @@ datasets>=2.11.0
 pyzstd
 einops
 termcolor
-sacrebleu
-levenshtein
-evaluate
