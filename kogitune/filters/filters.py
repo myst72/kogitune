@@ -101,7 +101,7 @@ class TextFilter(object):
             N=N,
             num_workers=num_workers,
         ) | kwargs
-        with adhoc.from_kwargs(**kwargs) as aargs:
+        with adhoc.aargs_from(**kwargs) as aargs:
             files = list_filenames(aargs['files|!!'])
             N = aargs['head|N|=-1']
             num_workers = aargs['num_workers|=1']
@@ -183,7 +183,7 @@ def load_filter(json_filename)->TextFilter:
         return adhoc.instantiate_from_dict(json.load(f), check=TextFilter)
 
 def filter_cli(**kwargs):
-    with adhoc.from_kwargs(**kwargs) as aargs:
+    with adhoc.aargs_from(**kwargs) as aargs:
         filter_config = aargs['filter_config|!!']
         text_filter = load_filter(filter_config)
         text_filter.run_for_cli(**kwargs)

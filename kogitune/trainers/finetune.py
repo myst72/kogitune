@@ -1,13 +1,11 @@
 import os, json
 import torch
-import kogitune.adhocs as adhoc
-from .gpus import bf16_is_available
 
+from .commons import adhoc
+from .gpus import bf16_is_available
 from ..datasets import load_train_dataset, load_template
 from .callbacks import load_callbacks
 
-import torch
-from transformers import AutoModelForCausalLM
 
 def inspect_model(model):
     # # モデルの構造を表示
@@ -38,7 +36,7 @@ def inspect_model(model):
 
 def load_train_model(**kwargs):
     from transformers import AutoModelForCausalLM
-    with adhoc.from_kwargs(**kwargs) as aargs:
+    with adhoc.aargs_from(**kwargs) as aargs:
         model_path = aargs['model_path|!!']
         model_args = aargs['model_args|model_config']
         if model_args is None:
@@ -104,7 +102,7 @@ def check_resume_from_checkpoint(aargs):
     return resume_from_checkpoint, output_dir, overwrite_output_dir
 
 def configure_train_args(**kwargs):
-    with adhoc.from_kwargs(**kwargs) as aargs:
+    with adhoc.aargs_from(**kwargs) as aargs:
         global_batch_size = aargs['global_batch_size|batch_size|=8']
         device_batch_size = aargs['device_batch_size|=8']
         gas = global_batch_size // device_batch_size
@@ -163,10 +161,11 @@ def formatting_prompts_func(example):
         output_texts.append(text)
     return output_texts
 
+@adhoc.cli
 def finetune_cli(**kwargs):
     from transformers import TrainingArguments
     from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
-    with adhoc.from_kwargs(**kwargs) as aargs:
+    with adhoc.aargs_from(**kwargs) as aargs:
         dataset = load_train_dataset()
         template = load_template(sample=dataset[0])
 

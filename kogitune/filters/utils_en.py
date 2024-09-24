@@ -7,12 +7,14 @@ from .patterns import compile_words
 # 更に多くの単語を追加
 
 common_english_words_pattern = re.compile(
-    r'\b(the|and|of|to|a|in|is|that|it|for|as|with|his|he|was|on|are|by|'
-    r'that|this|at|from|but|not|or|have|an|they|which|one|you|were|her|'
-    r'all|their|there|been|if|more|when|will|would|who|so|no|out|up|into|'
-    r'that|like|how|then|its|our|two|more|these|want|way|look|first|also|'
-    r'new|because|day|use|no|man|find|here|thing|give|many|well)\b', re.IGNORECASE
+    r"\b(the|and|of|to|a|in|is|that|it|for|as|with|his|he|was|on|are|by|"
+    r"that|this|at|from|but|not|or|have|an|they|which|one|you|were|her|"
+    r"all|their|there|been|if|more|when|will|would|who|so|no|out|up|into|"
+    r"that|like|how|then|its|our|two|more|these|want|way|look|first|also|"
+    r"new|because|day|use|no|man|find|here|thing|give|many|well)\b",
+    re.IGNORECASE,
 )
+
 
 def contains_english(text: str) -> bool:
     """
@@ -24,7 +26,7 @@ def contains_english(text: str) -> bool:
 
 
 # 空白の前が空白であればウントしない
-pattern_whitespace = re.compile(r'[^\s　][\s　]+')
+pattern_whitespace = re.compile(r"[^\s　][\s　]+")
 
 # class WhitespaceCounter(ScoreFunction):
 #     """
@@ -34,7 +36,7 @@ pattern_whitespace = re.compile(r'[^\s　][\s　]+')
 #     def __init__(self, length_fraction=False, **kwargs):
 #         """
 #         与えられたテキストの空白文字を数える評価関数を作る
-#         :param length_fraction: 全テキストにおける比率 
+#         :param length_fraction: 全テキストにおける比率
 #         """
 #         super().__init__(**kwargs)
 #         self.length_fraction = length_fraction

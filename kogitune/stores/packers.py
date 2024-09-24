@@ -7,9 +7,8 @@ from multiprocessing import Pool
 import kogitune.adhocs as adhoc
 
 from .tokenizers import *
-from ..commons import *
 from .files import *
-from .store import DatasetStore
+from ..datasets.stores import DatasetStore
 
 EMPTY_TOKENS = []
 
@@ -203,7 +202,7 @@ def store_files(files: List[str], tokenizer=None, **kwargs):
     :param files: ファイル名、もしくはファイル名のリスト
     """
     filenames = list_filenames(files)
-    with adhoc.from_kwargs(**kwargs) as aargs:
+    with adhoc.aargs_from(**kwargs) as aargs:
         tokenizer = adhoc.load_tokenizer(tokenizer=tokenizer)
         packer = find_packer(tokenizer, aargs)
 

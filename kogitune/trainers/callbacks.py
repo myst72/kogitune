@@ -1,7 +1,7 @@
 from typing import Union
-import time
 import transformers
-import kogitune.adhocs as adhoc
+import time
+from .commons import adhoc
 
 DAY_SEC = 24 * 3600
 HOUR_SEC = 3600
@@ -57,7 +57,7 @@ class TimeoutStoppingCallback(transformers.TrainerCallback):
             control.should_training_stop = True
 
 def load_callbacks(**kwargs):
-    with adhoc.from_kwargs(**kwargs) as aargs:
+    with adhoc.aargs_from(**kwargs) as aargs:
         callbacks = []
         if 'max_time' in aargs or 'sge_walltime_sec' in aargs:
             max_time = aargs['max_time|sge_walltime_sec']

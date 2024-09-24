@@ -1,0 +1,1 @@
+import kogitune.adhocs as adhoc

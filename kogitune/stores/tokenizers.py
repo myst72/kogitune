@@ -47,7 +47,7 @@ def tokenizer_as_json(tokenizer: Tokenizer):
 
 def load_tokenizer(tokenizer: Union[Tokenizer, str] = None, **kwargs):
     from transformers import AutoTokenizer
-    with adhoc.from_kwargs(**kwargs) as aargs:
+    with adhoc.aargs_from(**kwargs) as aargs:
         tokenizer = tokenizer or aargs[f'tokenizer_path|tokenizer|model_path|={DEFAULT_TOKENIZER}']
         if isinstance(tokenizer, str):
             tokenizer, local_args = adhoc.parse_path_args(tokenizer, parent_args=kwargs)

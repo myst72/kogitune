@@ -8,7 +8,7 @@ def find_nested_brackets(s):
     return regex.findall(pattern, s)
 
 def contains_da_notion(text):
-    matches = find_nested_brackets(s)
+    matches = find_nested_brackets(text)
     return len(matches) > 0
 
 # 使用例

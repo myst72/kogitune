@@ -1,5 +1,5 @@
 
-from .composers import (
+from .recipe import (
     DatasetRecipe, 
     DatasetRecipe as DatasetComposer
 )
