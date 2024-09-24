@@ -234,6 +234,7 @@ def load_model_float(model_path, model_args):
     from transformers import AutoModelForCausalLM
 
     try:
+        adhoc.print('Loading//モデルロード', model_path, model_args)
         model = AutoModelForCausalLM.from_pretrained(model_path, **model_args)
         return model
     except BaseException as e:
@@ -324,10 +325,10 @@ class HFModel(Model):
             del self.gen_args["max_length"]
         # if 'max_length' in gen_args:
         #     gen_args['trancation'] = True
-        if "return_full_text" not in self.gen_args:
-            self.gen_args["return_full_text"] = False
-        if "pad_token_id" not in self.gen_args:
-            self.gen_args["pad_token_id"] = self.tokenizer.eos_token_id
+        # if "return_full_text" not in self.gen_args:
+        #     self.gen_args["return_full_text"] = False
+        # if "pad_token_id" not in self.gen_args:
+        #     self.gen_args["pad_token_id"] = self.tokenizer.eos_token_id
 
     def generator_args(self) -> List[str]:
         return [
