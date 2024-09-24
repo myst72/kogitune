@@ -371,6 +371,22 @@ class HFModel(Model):
     def unwrap(self):
         return self.model
 
+    def generate(self, input_text: str, n=1, **kwargs) -> Union[List[str], str]:
+        model_inputs = self.tokenizer([input_text], return_tensors="pt").to(self.model.device)
+        gen_args = self.gen_args | kwargs
+        if 'max_new_tokens' not in gen_args:
+            gen_args['max_new_tokens'] = 256
+        generated_ids = self.model.generate(
+            **model_inputs, **gen_args
+        )
+        generated_ids = [
+            output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
+        ]
+        response = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+        response = response.strip()
+        return response
+
+
     def compute_loss(self, input_text: str) -> float:
         inputs = self.tokenizer(input_text, return_tensors="pt")
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
