@@ -279,7 +279,7 @@ class TestDataLoader(adhoc.AdhocLoader):
 
 TestDataLoader().register("testdata")
 
-def get_save_path(modeltag, datatag, task, **kwargs):
+def get_save_path(modeltag, datatag, task, /, **kwargs):
     if adhoc.get(kwargs, "selfcheck|self_check|=False"):
         task = 'selfcheck'
     
