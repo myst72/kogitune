@@ -240,8 +240,8 @@ def is_verbose():
 def verbose_print(*args, **kwargs):
     aargs = get_stack_aargs()
     if aargs["verbose|=True"]:
-        if 'face' in kwargs:
-            kwargs['face'] = kwargs['face'] * 3
+        if 'color' not in kwargs:
+            kwargs['color'] = 'cyan'
         aargs_print(*args, **kwargs)
 
 
@@ -303,12 +303,6 @@ class LoaderObject(object):
             values.append(value)
         return values[0] if len(values) == 1 else values
 
-    def verbose_print(self, sample:dict):
-        if not hasattr(self, 'verbose_count'):
-            self.verbose_count = 5
-        if self.verbose_count > 0:
-            aargs_print(sample, face='🦆')
-            self.verbose_count -= 1
 
 
 class AdhocLoader(object):

@@ -1,6 +1,5 @@
 import os
-from .commons import adhoc
-
+from ..loads.commons import adhoc
 
 SCRATCH_MAP = {}
 
@@ -96,17 +95,6 @@ class ScratchBuilder(adhoc.AdhocLoader):
 
 ScratchBuilder().register("scratch")
 
-
-class scratch_cli(adhoc.CLI):
-    def run(self, **kwargs):
-        with adhoc.aargs_from(kwargs) as aargs:
-            model_type = aargs['model_type|!llama2']
-            model = adhoc.load('scratch', model_type, **kwargs)
-            save_path = aargs['save_path|!scratch']
-            if save_path:
-                model.save(save_path, use_fp16=aargs['use_fp16|=False'])
-
-scratch_cli.register('scratch') 
 
 
 

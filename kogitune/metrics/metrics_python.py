@@ -63,16 +63,17 @@ PassAtK.register("pass@k|pass@")
 
 
 def simplify_results(d, result_list):
-    if isinstance(d, dict):
-        if "passed" in d and "result" in d:
-            result_list.append(d)
-        else:
-            for _, v in d.items():
-                simplify_results(v, result_list)
-    if isinstance(d, list):
-        for v in d:
-            simplify_results(v, result_list)
-    return result_list
+    return d
+    # if isinstance(d, dict):
+    #     if "passed" in d and "result" in d:
+    #         result_list.append(d)
+    #     else:
+    #         for _, v in d.items():
+    #             simplify_results(v, result_list)
+    # if isinstance(d, list):
+    #     for v in d:
+    #         simplify_results(v, result_list)
+    # return result_list
 
 
 

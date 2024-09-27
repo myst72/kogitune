@@ -155,9 +155,10 @@ def aargs_print(*args, **kwargs):
     text_en = sep.join(_split_en(a) for a in args)
     text_ja = sep.join(_split_ja(a) for a in args)
     if once:
-        if text_en in ONCE:
+        once_key = once if isinstance(once, str) else text_en
+        if once_key in ONCE:
             return
-        ONCE[text_en] = True
+        ONCE[once_key] = True
     if color:
         text_en = colored(text_en, color)
         text_ja = colored(text_ja, color)

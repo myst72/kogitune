@@ -1,6 +1,7 @@
 from typing import List
 import os
 import io
+import json
 import random
 import string
 import hashlib
@@ -591,22 +592,22 @@ def find_index_from_url(base_url, **kwargs):
 #         dataset[i]
 
 
-# https://papertown-jwu.s3.ap-northeast-1.amazonaws.com/llm-jp-915a/mc4ja_line/0135/text512train_00.npz.zst
+# # https://papertown-jwu.s3.ap-northeast-1.amazonaws.com/llm-jp-915a/mc4ja_line/0135/text512train_00.npz.zst
 
 
-def makeindex(base_url, prefix="text512train_"):
-    config_file = f"{basename(base_url)}.json"
-    config = {"base_url": base_url}
-    files = []
-    for i in range(2):
-        for j in range(2):
-            url = f"{base_url}/{i:04d}/{prefix}{j:02d}.npz.zst"
-            print(url)
-            data = check(url)
-            if data is None:
-                break
-            files.append(data)
-        if j == 0:
-            break
-    config["files"] = files
-    write_config(config_file, config)
+# def makeindex(base_url, prefix="text512train_"):
+#     config_file = f"{basename(base_url)}.json"
+#     config = {"base_url": base_url}
+#     files = []
+#     for i in range(2):
+#         for j in range(2):
+#             url = f"{base_url}/{i:04d}/{prefix}{j:02d}.npz.zst"
+#             print(url)
+#             data = check(url)
+#             if data is None:
+#                 break
+#             files.append(data)
+#         if j == 0:
+#             break
+#     config["files"] = files
+#     write_config(config_file, config)

@@ -8,18 +8,10 @@ from ..loads.commons import *
 
 METRICS_MAP = {}
 
-def split_digit(s):
-    d = ""
-    while s[-1].isdigit():
-        d = s[-1] + d
-        s = s[:-1]
-    return s, None if d == "" else int(d)
-
-
 class MetricLoader(adhoc.AdhocLoader):
 
     def load(self, path: str, tag: str, kwargs):
-        path, k = split_digit(path)
+        path, k = _split_digit(path)
         if k is not None:
             kwargs["k"] = k
         scheme = path.lower().replace("-", "_").partition(":")[0]
@@ -30,6 +22,14 @@ class MetricLoader(adhoc.AdhocLoader):
 
 
 MetricLoader().register("metric")
+
+def _split_digit(s):
+    d = ""
+    while s[-1].isdigit():
+        d = s[-1] + d
+        s = s[:-1]
+    return s, None if d == "" else int(d)
+
 
 
 class Metric(adhoc.LoaderObject):
@@ -42,7 +42,12 @@ class Metric(adhoc.LoaderObject):
         self.name = name
         self.path = name
         self.scale = 100
+        self.verbose_count = adhoc.get(kwargs, "verbose_count|head|=0")
 
+    def verbose_sample(self, sample:dict):
+        if self.verbose_count > 0:
+            adhoc.print(adhoc.dump(sample), face='🦆')
+            self.verbose_count -= 1
 
     def eval(self, candidate: Union[str, List[str]], reference: Union[str, List[str]]) -> float:
         if isinstance(reference, str):
@@ -68,7 +73,7 @@ class Metric(adhoc.LoaderObject):
             if force_eval or self.name not in sample:
                 candidates, reference = self.extract_pairs(sample)
                 sample[self.name] = self.eval_s(candidates, reference, sample) * self.scale
-                self.verbose_print(sample)
+                self.verbose_sample(sample)
             if self.name in sample:
                 scores.append(sample[self.name])
         if len(scores) == 0:

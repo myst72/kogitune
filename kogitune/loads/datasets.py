@@ -74,7 +74,7 @@ class HFDatasetStream(DataStream):
         return f"{datatag}{self.suffix}"
 
     def stream(self, start=0, end=None):
-        import datasets
+        datasets = adhoc.safe_import('datasets')
 
         if 'name' in self.pathargs:
             name = self.pathargs['name']
@@ -83,7 +83,7 @@ class HFDatasetStream(DataStream):
         if 'split' not in self.pathargs:
             split_names = datasets.get_dataset_split_names(self.path, **self.pathargs)
             self.pathargs['split'] = split_names[0]
-            adhoc.verbose_print(f'splitの指定がないから、split="{split_names[0]}"を使うよ')
+            adhoc.verbose_print(f'splitの指定がないから、split="{split_names[0]}"を使うよ', once=self.path)
 
         dataset = datasets.load_dataset(self.path, **self.pathargs)
         if isinstance(dataset, datasets.DatasetDict):
@@ -95,6 +95,7 @@ class HFDatasetStream(DataStream):
         if start != 0 or end != None:
             return itertools.islice(dataset, start, end)
         return dataset
+
 
 class HFDatasetNames(HFDatasetStream):
 
@@ -243,48 +244,3 @@ class RecordDataLoader(adhoc.AdhocLoader):
 RecordDataLoader().register("record")
 
 
-class TestDataLoader(adhoc.AdhocLoader):
-
-    def load(self, path, tag, kwargs):
-        import kogitune.datasets.templates
-
-        stream = adhoc.load("datastream", path, **kwargs)
-        samples = [sample for sample in stream.samples()]
-        if path.endswith('.jsonl'):
-            sample = samples[0]
-            if 'dataset' in sample and 'model' in sample:
-                record = RecordData(path, samples, **kwargs)
-                record.tags = (sample['model'], sample['dataset'])
-                return record
-
-        transform = adhoc.load('from_kwargs', 'Transform', **kwargs)
-        transform.transform(samples)
-
-        datatag = tag if tag != '' else stream.datatag()
-        samples = [{"dataset": datatag} | sample for sample in samples]
-        modeltag = kwargs.get('modeltag', '(model)')
-
-        eval_type = kwargs.get('eval_type', 'gen')
-        template = adhoc.load("from_kwargs", "Template", _sample=samples[0], **kwargs)
-        for sample in samples:
-            template.apply(eval_type, sample)
-
-        save_path = get_save_path(modeltag, datatag, eval_type, **kwargs)
-
-        record = RecordData(save_path, samples)
-        record.tags = (modeltag, datatag)
-        record.save()
-        adhoc.saved(save_path, 'Results//評価結果')
-        return record
-
-TestDataLoader().register("testdata")
-
-def get_save_path(modeltag, datatag, task, /, **kwargs):
-    if adhoc.get(kwargs, "selfcheck|self_check|=False"):
-        task = 'selfcheck'
-    
-    if task is None or task == "gen":
-        save_path = f"{modeltag}/{datatag}_x_{modeltag}.jsonl"
-    else:
-        save_path = f"{modeltag}/{datatag}_{task}_x_{modeltag}.jsonl"
-    return save_path

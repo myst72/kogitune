@@ -48,7 +48,7 @@ class LeaderBoard(object):
                     group_scores[group] = []
                 scores = group_scores[group]
                 scores.append(score)
-        modeltag, datatag = testdata.tags()
+        modeltag, datatag = testdata.tags
         for group in group_scores.keys():
             scores = np.array(group_scores[group])
             testname = (

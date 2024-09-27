@@ -24,6 +24,7 @@ class ModelLoader(adhoc.AdhocLoader):
         else:
             return HFModel(path, tag, kwargs)
 
+ModelLoader().register("model")
 
 class Model(adhoc.LoaderObject):
     def __init__(self, model_path, tag, kwargs):
@@ -33,7 +34,7 @@ class Model(adhoc.LoaderObject):
         self.model_path = model_path
         self.modeltag = tag
         self.pathargs = {}
-        self.verbose_count = kwargs.get("verbose_count", 5)
+        self.verbose_count = adhoc.get(kwargs, "verbose_count|head|=0")
         self.gen_args = adhoc.safe_kwargs(kwargs, *self.generator_args())
 
     def __repr__(self) -> str:
@@ -42,19 +43,27 @@ class Model(adhoc.LoaderObject):
     def generator_args(self) -> List[str]:
         return []
 
-    def verbose(self, *args) -> None:
+    def verbose_print(self, *args, **kwargs) -> None:
         if self.verbose_count > 0:
-            adhoc.verbose_print(*args, face="👀")
+            adhoc.print(*args, **kwargs)
+            self.verbose_count -= 1
+
+    def verbose_sample(self, sample:dict) -> None:
+        if self.verbose_count > 0:
+            adhoc.print(adhoc.dump(sample), face='👀')
             self.verbose_count -= 1
 
     def compute_loss(self, input_text) -> float:
         return np.nan
 
+    def generate(self, input_text: str, n=1, **kwargs) -> Union[List[str], str]:
+        return "" if n == 1 else [""] * n
+
     def eval_loss(self, sample_list: Union[List[dict], dict]):
         for sample in list_tqdm(sample_list, desc=f"{self}"):
             input_text = sample["input"]
             sample["loss"] = self.compute_loss(input_text)
-            self.verbose(sample)
+            self.verbose_sample(sample)
 
     def eval_choice(self, sample_list: Union[List[dict], dict]):
         for sample in list_tqdm(sample_list, desc=f"{self}"):
@@ -65,16 +74,13 @@ class Model(adhoc.LoaderObject):
             predicted_idx = scores.index(min(scores))
             sample["input"] = input_list[predicted_idx]
             sample["output"] = sample["choice"][predicted_idx]
-            self.verbose(sample)
-
-    def generate(self, input_text: str, n=1, **kwargs) -> Union[List[str], str]:
-        return "" if n == 1 else [""] * n
+            self.verbose_sample(sample)
 
     def eval_gen(self, sample_list: Union[List[dict], dict], n=1, **kwargs):
         for sample in list_tqdm(sample_list, desc=f"{self}"):
             input_text = sample["input"]
             sample["output"] = self.generate(input_text, n=n, **kwargs)
-            self.verbose(sample)
+            self.verbose_sample(sample)
 
     def eval(self, sample_list: Union[List[dict], dict], eval_type=None, n=1, **kwargs):
         if eval_type == "choice":
@@ -89,22 +95,8 @@ class Model(adhoc.LoaderObject):
         global LOADER_MODELMAP
         LOADER_MODELMAP[scheme] = cls
 
-
-
-
-ModelLoader().register("model")
-
 ###
 # OpenAI
-
-
-def list_tqdm(list_or_value, desc=None):
-    if not isinstance(list_or_value, (list, tuple)):
-        list_or_value = [list_or_value]
-    if len(list_or_value) == 1:
-        return list_or_value
-    return adhoc.tqdm(list_or_value, desc=desc)
-
 
 class OpenAIModel(Model):
     def __init__(self, model_path, tag, kwargs):
@@ -302,7 +294,7 @@ def data_stream(sample_list: List[str], desc=None):
 
 class HFModel(Model):
     def __init__(self, model_path, tag, kwargs):
-        from transformers import pipeline
+        transformers = adhoc.safe_import('transformers')
 
         super().__init__(model_path, tag, kwargs)
         tokenizer_path = self.get(kwargs, f"tokenizer_path|={model_path}")
@@ -313,9 +305,9 @@ class HFModel(Model):
         #     self.tokenizer.trancation = True
         self.model = load_hfmodel(model_path, kwargs)
         self.device = next(self.model.parameters()).device
-        adhoc.notice("デバイス//DEIVCE", self.device)
+        adhoc.verbose_print("MODEL DEIVCE/モデルがロードされたデバイス", self.device)
         hf_token = self.get(kwargs, "_hf_token|HF_TOKEN|use_auth_token")
-        self.generator = pipeline(
+        self.generator = transformers.pipeline(
             "text-generation",
             model=self.model,
             tokenizer=self.tokenizer,
@@ -325,8 +317,8 @@ class HFModel(Model):
             del self.gen_args["max_length"]
         # if 'max_length' in gen_args:
         #     gen_args['trancation'] = True
-        # if "return_full_text" not in self.gen_args:
-        #     self.gen_args["return_full_text"] = False
+        if "return_full_text" not in self.gen_args:
+            self.gen_args["return_full_text"] = False
         # if "pad_token_id" not in self.gen_args:
         #     self.gen_args["pad_token_id"] = self.tokenizer.eos_token_id
 
@@ -399,73 +391,70 @@ class HFModel(Model):
             loss = outputs.loss
         return loss.item()
 
-    def eval_loss(self, sample_list: Union[List[dict], dict]):
-        for sample in list_tqdm(sample_list, desc=f"{self}"):
-            input_text = sample["input"]
-            input_ids = torch.tensor(self.tokenizer.encode(input_text)).unsqueeze(0)
-            input_ids = input_ids.to(self.model.device)
-            # inputs = self.tokenizer(input_text, return_tensors="pt")
-            # inputs = {k: v.to(self.device) for k, v in inputs.items()}
-            # labels = inputs["input_ids"].clone()
-            # 不要なキーを除去
-            # inputs.pop("token_type_ids", None)
-            with torch.no_grad():
-                outputs = self.model(input_ids, labels=input_ids)
-                # outputs = self.model(**inputs, labels=labels)
-                loss, logits = outputs[:2]
-            sample["loss"] = loss.item()  # log-likelihood
-            # mink and mink++
-            input_ids = input_ids[0][1:].unsqueeze(-1)
-            probs = F.softmax(logits[0, :-1], dim=-1)
-            log_probs = F.log_softmax(logits[0, :-1], dim=-1)
-            token_log_probs = log_probs.gather(dim=-1, index=input_ids).squeeze(-1)
-            mu = (probs * log_probs).sum(-1)
-            sigma = (probs * torch.square(log_probs)).sum(-1) - torch.square(mu)
-            ## mink
-            scores = {}
-            for k in range(10, 101, 10):
-                k_length = int(len(token_log_probs) * k // 100)
-                topk = np.sort(token_log_probs.cpu())[:k_length]
-                scores[k] = -np.mean(topk).item()
-            sample["mink_prob"] = scores
-            ## mink++
-            scores = {}
-            mink_plus = (token_log_probs - mu) / sigma.sqrt()
-            for k in range(10, 101, 10):
-                k_length = int(len(mink_plus) * k // 100)
-                topk = np.sort(mink_plus.cpu())[:k_length]
-                scores[k] = -np.mean(topk).item()
-            sample["mink_plus"] = scores
-            self.verbose(sample)
+    # def eval_loss(self, sample_list: Union[List[dict], dict]):
+    #     for sample in list_tqdm(sample_list, desc=f"{self}"):
+    #         input_text = sample["input"]
+    #         input_ids = torch.tensor(self.tokenizer.encode(input_text)).unsqueeze(0)
+    #         input_ids = input_ids.to(self.model.device)
+    #         # inputs = self.tokenizer(input_text, return_tensors="pt")
+    #         # inputs = {k: v.to(self.device) for k, v in inputs.items()}
+    #         # labels = inputs["input_ids"].clone()
+    #         # 不要なキーを除去
+    #         # inputs.pop("token_type_ids", None)
+    #         with torch.no_grad():
+    #             outputs = self.model(input_ids, labels=input_ids)
+    #             # outputs = self.model(**inputs, labels=labels)
+    #             loss, logits = outputs[:2]
+    #         sample["loss"] = loss.item()  # log-likelihood
+    #         # mink and mink++
+    #         input_ids = input_ids[0][1:].unsqueeze(-1)
+    #         probs = F.softmax(logits[0, :-1], dim=-1)
+    #         log_probs = F.log_softmax(logits[0, :-1], dim=-1)
+    #         token_log_probs = log_probs.gather(dim=-1, index=input_ids).squeeze(-1)
+    #         mu = (probs * log_probs).sum(-1)
+    #         sigma = (probs * torch.square(log_probs)).sum(-1) - torch.square(mu)
+    #         ## mink
+    #         scores = {}
+    #         for k in range(10, 101, 10):
+    #             k_length = int(len(token_log_probs) * k // 100)
+    #             topk = np.sort(token_log_probs.cpu())[:k_length]
+    #             scores[k] = -np.mean(topk).item()
+    #         sample["mink_prob"] = scores
+    #         ## mink++
+    #         scores = {}
+    #         mink_plus = (token_log_probs - mu) / sigma.sqrt()
+    #         for k in range(10, 101, 10):
+    #             k_length = int(len(mink_plus) * k // 100)
+    #             topk = np.sort(mink_plus.cpu())[:k_length]
+    #             scores[k] = -np.mean(topk).item()
+    #         sample["mink_plus"] = scores
+    #         self.verbose(sample)
 
-    def compute_next_token_prob(self, input_text: str, token_ids=None):
-        inputs = self.tokenizer(input_text, return_tensors="pt")
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
-        with torch.no_grad():
-            outputs = self.model(inputs)
-            logits = outputs.logits
+    # def compute_next_token_prob(self, input_text: str, token_ids=None):
+    #     inputs = self.tokenizer(input_text, return_tensors="pt")
+    #     inputs = {k: v.to(self.device) for k, v in inputs.items()}
+    #     with torch.no_grad():
+    #         outputs = self.model(inputs)
+    #         logits = outputs.logits
 
-        # 次のトークンの確率を計算
-        next_token_logits = logits[:, -1, :]
-        probs = F.softmax(next_token_logits, dim=-1)
+    #     # 次のトークンの確率を計算
+    #     next_token_logits = logits[:, -1, :]
+    #     probs = F.softmax(next_token_logits, dim=-1)
 
-        # yes_token_id = self.tokenizer.encode('yes')[0]
-        # "yes" の予測確率を取得
-        # yes_prob = probs[0, yes_token_id].item()
-        if token_ids is None:
-            return [
-                probs[0, token_id].item()
-                for token_id in range(self.tokenizer.vocab_size)
-            ]
-        else:
-            return [probs[0, token_id].item() for token_id in token_ids]
+    #     # yes_token_id = self.tokenizer.encode('yes')[0]
+    #     # "yes" の予測確率を取得
+    #     # yes_prob = probs[0, yes_token_id].item()
+    #     if token_ids is None:
+    #         return [
+    #             probs[0, token_id].item()
+    #             for token_id in range(self.tokenizer.vocab_size)
+    #         ]
+    #     else:
+    #         return [probs[0, token_id].item() for token_id in token_ids]
 
-    def eval_gen(
-        self, sample_list: Union[List[dict], dict], n=1, **kwargs
-    ) -> List[str]:
+    def eval_gen(self, sample_list: Union[List[dict], dict], n=1, **kwargs) -> List[str]:
         args = self.gen_args | dict(
             num_return_sequences=n,
-            batch_size=kwargs.get("batch_size", 2),
         )
         sample_list = listfy(sample_list)
         outputs = self.generator(data_stream(sample_list, desc=f"{self}"), **args)
@@ -474,7 +463,7 @@ class HFModel(Model):
             sample["output"] = [item["generated_text"] for item in results]
             if len(sample["output"]) == 1:
                 sample["output"] = sample["output"][0]
-
+            self.verbose_sample(sample)
 
 HFModel.regiser("hf")
 
@@ -523,7 +512,7 @@ IPSUM = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod
 def test_model_cli(**kwargs):
     with adhoc.aargs_from(**kwargs) as aargs:
         if "max_new_tokens" not in aargs:
-            aargs["max_new_tokens"] = 256
+            aargs["max_new_tokens"] = aargs["max_new_tokens|!256"]
         model = adhoc.load("model", aargs["model_path|model"])
         print(model)
         prompt = aargs["test_prompt|prompt"]
