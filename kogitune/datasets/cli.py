@@ -14,48 +14,38 @@ def train_bpe_cli(**kwargs):
 @adhoc.from_kwargs
 def word_list_from_kwargs(**kwargs):
     words = adhoc.get_list(kwargs, "word_list|words|!!")
-    if len(words) == 1 and '.jsonl' in words[0]:
+    if len(words) == 1:
+        is_text_file = '.txt' in words[0]
         path, args, tag = adhoc.parse_path(words[0], parent_args=kwargs)
-        key = adhoc.get(args, 'key|=word')
+        record = adhoc.load('record', path, **args)
+        key = adhoc.get(args, 'word_key|key|=word')
         words = []
-        with open(path) as f:
-            for line in f.readlines():
-                d = json.loads(line)
-                try:
-                    words.append(d[key])
-                except KeyError as e:
-                    adhoc.print('存在するkeyをちょうだい', d)
-                    raise e
+        for sample in record.samples():
+            text = adhoc.get_formatted_text(sample, key)
+            if is_text_file and text.startswith('#'):
+                continue
+            words.append(text)
         return words
-    if len(words) == 1 and words[0].endswith('.txt'):
-        path, args, _ = adhoc.parse_path(words[0], parent_args=kwargs)
-        words = []
-        with open(path) as f:
-            for line in f.readlines():
-                if line.startswith('#'):
-                    continue
-                    words.append(line.strip())
-        return words
-    return words  
-
+    return words
 
 @adhoc.cli
-def add_multi_token_cli(**kwargs):
+def add_vocab_cli(**kwargs):
     from .tokenizers_mte import make_mte
 
     with adhoc.aargs_from(**kwargs) as aargs:
         tokenizer = adhoc.load('from_kwargs', 'tokenizer', **aargs)
         words = adhoc.load('from_kwargs', 'word_list', **aargs)
-        save_path = aargs["save_path|!mte"]
-        bases = listfy(aargs['base|!<0x00>'])
+        save_path = aargs[f"save_path|!{basename(tokenizer.name_or_path)}_mte"]
+        bases = listfy(aargs['multi_index|!<0x00>'])
         start=aargs['start|=10000']
         end=aargs['end']
-        tokenizer = make_mte(tokenizer, words, bases, start=start, end=end)
+        tokenizer, table = make_mte(tokenizer, words, bases, start=start, end=end, **aargs)
         tokenizer.save_pretrained(save_path)
-
+        save_table('add_tokens.csv', table, save_path=save_path)
+        
 @adhoc.cli
-def add_vocab_cli(**kwargs):
-    add_multi_token_cli(**kwargs)
+def add_multi_token_cli(**kwargs):
+    add_vocab_cli(**kwargs)
 
 
 @adhoc.cli

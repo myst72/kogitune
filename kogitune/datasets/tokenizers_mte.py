@@ -1,7 +1,7 @@
 
 from typing import List
 from transformers import PreTrainedTokenizerFast
-from ..loads.commons import adhoc
+from ..loads.commons import adhoc, VerboseCounter
 
 class MTEEncoding(object):
     """
@@ -124,25 +124,25 @@ def load_mte_config(tokenizer):
             Tokenizer.decode_batch = wrap_decode(Tokenizer.decode_batch)
             ALREADY_WRAPPED = True
 
-def make_mte(tokenizer, new_tokens:List[str], bases:List[int], start=1000, end=None):
+def make_mte(tokenizer, new_tokens:List[str], bases:List[int], start=1000, end=None, /, **kwargs):
+    import numpy as np
     #print('is_PreTrainedTokenizerFast', isinstance(tokenizer, PreTrainedTokenizerFast))
     assert isinstance(tokenizer, PreTrainedTokenizerFast)
 
     vocab_size = len(tokenizer)
-    adhoc.print('Vocab. size//語彙サイズ', vocab_size)
-    token_ids = tokenizer.encode("", max_length=8)
-    offset = len(token_ids)
+    adhoc.print('Vocab. size//オリジナルのサブワード辞書の大きさ', vocab_size)
     before_tokens_len = []
     before_tokens = []
     good_tokens = []
+    verbose = VerboseCounter(**kwargs)
     for token in new_tokens:
         token_ids = tokenizer.encode(token, add_special_tokens=False)
         if len(token_ids) > 2:
             good_tokens.append(token)
             before_tokens_len.append(len(token_ids))
             before_tokens.append(token_ids)
-            print(token, len(token_ids), token_ids)
-    adhoc.print('Additional Vocab. size//追加する語彙サイズ', len(good_tokens))
+            verbose.print(token, len(token_ids), token_ids, face='  ')
+    adhoc.print('Additional Vocab. size//追加される語彙の大きさ', len(new_tokens), '=>', len(good_tokens))
 
     tokenizer.add_tokens(good_tokens)
     if isinstance(bases[0], str):
@@ -158,10 +158,17 @@ def make_mte(tokenizer, new_tokens:List[str], bases:List[int], start=1000, end=N
 
     after_tokens_len = []
     after_tokens = []
+    verbose = VerboseCounter(**kwargs)
     for token in good_tokens:
         token_ids = tokenizer.encode(token, add_special_tokens=False)
         after_tokens_len.append(len(token_ids))
         after_tokens.append(token_ids)
-        print(token, len(token_ids), token_ids, tokenizer.decode(token_ids))
+        verbose.print(token, len(token_ids), token_ids, tokenizer.decode(token_ids), face='  ')
 
-    return tokenizer
+    tables = {'token': good_tokens, 
+             'before_len': before_tokens_len, 
+             'before': before_tokens,
+             'after_len': after_tokens_len,
+             'after': after_tokens}
+    adhoc.print(f'平均トークン数 {np.mean(before_tokens_len)} => {np.mean(after_tokens_len)}')
+    return tokenizer, tables

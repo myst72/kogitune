@@ -39,6 +39,7 @@ from .main import (
     aargs_from,
     get,
     get_list, 
+    is_verbose,
     verbose_print,
     load,
     AdhocLoader,

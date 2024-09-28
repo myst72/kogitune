@@ -1,5 +1,5 @@
 import kogitune.adhocs as adhoc
-from .files import basename, zopen, safe_makedirs, write_config, read_config, join_name
+from .files import os, basename, zopen, safe_makedirs, write_config, read_config, join_name
 
 
 def singlefy(v):
@@ -52,3 +52,17 @@ def report_KeyError(e: KeyError, sample: dict):
     adhoc.print(repr(e), face="🙈")
     adhoc.print(adhoc.dump(sample), face="")
     raise e
+
+
+def save_table(filename, table:dict, save_path='.'):
+    import pandas as pd
+    PERCENTILES = [0.05, 0.1, 0.2, 0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 0.95, 0.99]
+    df = pd.DataFrame(table)
+    print(df.describe(percentiles=PERCENTILES))
+    path = os.path.join(save_path, filename)
+    df.to_csv(path, index=False)
+    adhoc.saved(path, 'Statistics of Additional Vocabulary//追加語彙の統計')
+    if path.endswith('.csv'):
+        with open(path.replace('.csv', '_describe.txt'), "w") as w:
+            print(df.describe(percentiles=PERCENTILES), file=w)
+    

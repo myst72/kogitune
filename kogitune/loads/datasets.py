@@ -208,11 +208,53 @@ class TransformIter(object):
         return self.transform.transform_s(next(self.iterator))
 
 
+class RecordDataLoader(adhoc.AdhocLoader):
+
+    def load(self, path: str, tag: str, kwargs):
+        import pandas as pd
+        if path.endswith('.txt'):
+            df = pd.read_table(path, sep='\n', header=None)
+            df.columns = ['text']
+            dict_rows = df.to_dict(orient='records')
+            return RecordData(path, dict_rows)
+        if path.endswith('.csv'):
+            df = pd.read_csv(path)
+            df.columns = [str(name).lower().replace(" ", "_") for name in df.columns]
+            dict_rows = df.to_dict(orient='records')
+            return RecordData(path, dict_rows)
+        if path.endswith('.tsv'):
+            df = pd.read_csv(path, sep='\t')
+            df.columns = [str(name).lower().replace(" ", "_") for name in df.columns]
+            dict_rows = df.to_dict(orient='records')
+            return RecordData(path, dict_rows)
+        if path.endswith('.xlsx'):
+            df = pd.read_excel(path)
+            df.columns = [str(name).lower().replace(" ", "_") for name in df.columns]
+            dict_rows = df.to_dict(orient='records')
+            return RecordData(path, dict_rows)
+        if path.endswith('.xls'):
+            df = pd.read_excel(path)
+            df.columns = [str(name).lower().replace(" ", "_") for name in df.columns]
+            dict_rows = df.to_dict(orient='records')
+            return RecordData(path, dict_rows)
+        df = pd.read_json(path, lines=True)
+        dict_rows = df.to_dict(orient='records')
+        return RecordData(path, dict_rows)
+
+
+RecordDataLoader().register("record")
+
+def rename_path_as_jsonl(path):
+    if not os.path.exists(path):
+        return f"{basename(path)}.jsonl"
+    else:
+        return f"{basename(path, split_dir=False)}.jsonl"
+
 class RecordData(adhoc.LoaderObject):
     def __init__(self, path: str, samplelist: List[dict]):
         self.path = path
         self.samplelist = samplelist
-        self.save_path = path
+        self.save_path = rename_path_as_jsonl(path)
         self.save_mode = "w"
 
     def samples(self, start=0, end=None):
@@ -255,15 +297,5 @@ class RecordData(adhoc.LoaderObject):
             return 5
         return None
 
-class RecordDataLoader(adhoc.AdhocLoader):
-
-    def load(self, path: str, tag: str, kwargs):
-        with zopen(path, "rt") as f:
-            samplelist = [json.loads(line.strip()) for line in f]
-        recorddata = RecordData(path, samplelist)
-        return recorddata
-
-
-RecordDataLoader().register("record")
 
 
