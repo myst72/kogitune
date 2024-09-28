@@ -368,12 +368,13 @@ def cli(func):
 class CLIExecutor(AdhocLoader):
 
     def load(self, path, tag, kwargs):
+        import kogitune.datasets.cli
         import kogitune.metrics.cli
 
         global CLI_MAP
-        path = path.replace('_', '')
-        if path in CLI_MAP:
-            return CLI_MAP[path](**kwargs)
+        key = path.replace('_', '')
+        if key in CLI_MAP:
+            return CLI_MAP[key](**kwargs)
         raise KeyError(path)
 
 CLIExecutor().register("cli")

@@ -9,6 +9,27 @@ def train_bpe_cli(**kwargs):
         save_path = aargs["save_path|!bpe"]
         train_bpe(files, save_path, **aargs)
 
+
+@adhoc.from_kwargs
+def word_list_from_kwargs(**kwargs):
+    words = adhoc.get_list(kwargs, "word_list|words|!!")    
+    return words  
+
+
+@adhoc.cli
+def add_multi_token_cli(**kwargs):
+    from .tokenizers_mte import make_mte
+
+    with adhoc.aargs_from(**kwargs) as aargs:
+        tokenizer = adhoc.load('from_kwargs', 'tokenizer', **aargs)
+        words = adhoc.load('from_kwargs', 'word_list', **aargs)
+        save_path = aargs["save_path|!mte"]
+        bases = listfy(aargs['base|!<0x00>'])
+        start=aargs['start|=10000']
+        end=aargs['end']
+        tokenizer = make_mte(tokenizer, words, bases, start=start, end=end)
+        tokenizer.save_pretrained(save_path)
+
 @adhoc.cli
 def split_dataset_cli(**kwargs):
     """

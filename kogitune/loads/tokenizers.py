@@ -70,7 +70,7 @@ tokenizer_available_keys = [
     "padding_side", 
 ]
 
-def load_hftokenizer(tokenizer_path, **kwargs):
+def load_hftokenizer(tokenizer_path, /, **kwargs):
     from transformers import AutoTokenizer
 
     if "TOKENIZERS_PARALLELISM" not in os.environ:
@@ -80,13 +80,16 @@ def load_hftokenizer(tokenizer_path, **kwargs):
     args = adhoc.safe_kwargs(args, *tokenizer_available_keys)
     if "trust_remote_code" not in args:
         args["trust_remote_code"] = True
-    if "use_fast" not in args:
-        args["use_fast"] = False
+    # if "use_fast" not in args:
+    #     args["use_fast"] = False
     try:
-        adhoc.print('Loading..//ロード中', tokenizer_path, args, once=True)
+        adhoc.print('Loading..//トークンナイザー', tokenizer_path, args, once=tokenizer_path)
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, **args)
     except BaseException as e:
         adhoc.notice_kwargs(tokenizer_path, args, exception=e)
+    if 'mte_bases' in tokenizer.init_kwargs:
+        from ..datasets.tokenizers_mte import load_mte_config
+        load_mte_config(tokenizer)
     return tokenizer, args
 
 @adhoc.from_kwargs

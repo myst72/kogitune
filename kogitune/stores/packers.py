@@ -8,7 +8,7 @@ import kogitune.adhocs as adhoc
 
 from .tokenizers import *
 from .files import *
-from ..datasets.stores import DatasetStore
+from ..datasets.tokenizers_mte import DatasetStore
 
 EMPTY_TOKENS = []
 
