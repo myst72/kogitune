@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 
 from .commons import *
-from .datasets_file import basename
+from .files import basename
 
 LOADER_MODELMAP = {}
 

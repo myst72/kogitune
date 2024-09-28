@@ -1,10 +1,10 @@
 from typing import List, Union
 import itertools
 import json
-import random
+import os
 
 from .commons import *
-from .datasets_file import file_jsonl_reader, write_config, safe_makedirs
+from .files import file_jsonl_reader, write_config, safe_makedirs
 
 
 class DataStream(adhoc.LoaderObject):
@@ -213,6 +213,7 @@ class RecordData(adhoc.LoaderObject):
         self.path = path
         self.samplelist = samplelist
         self.save_path = path
+        self.save_mode = "w"
 
     def samples(self, start=0, end=None):
         return self.samplelist[start:end]
@@ -222,22 +223,44 @@ class RecordData(adhoc.LoaderObject):
         values = [sample.get(key, "") for key in keys]
         return values[0] if len(keys) == 1 else values
 
-    def save(self, save_path=None, mode="w", overwrite=True):
+    def save(self, save_path=None):
         save_path = save_path or self.save_path
+
         if save_path:
             safe_makedirs(save_path)
-            with open(save_path, mode=mode, encoding="utf-8") as w:
+            with open(save_path, mode=self.mode, encoding="utf-8") as w:
                 for result in self.samplelist:
                     assert isinstance(result, dict)
                     print(json.dumps(result, ensure_ascii=False), file=w)
 
+    def rename_save_path(self, **kwargs):
+        head = adhoc.get(kwargs, "test_run|head")
+        if head:
+            self.save_path = None
+            return head
+        output_file = adhoc.get(kwargs, "output_file")
+        if output_file:
+            if os.path.exists(output_file):
+                os.unlink(output_file)
+            self.save_path = output_file
+            self.save_mode="a"
+            return None
+        overwrite = adhoc.get(kwargs, "overwrite|=False")
+        if overwrite == False and output_file is None:
+            adhoc.print(
+                "To save a file, you need `output_file` or `overwrite=True`"
+                "//ファイル出力するには、output_fileかoverwrite=Trueを指定しよう"
+            )
+            self.save_path = None
+            return 5
+        return None
 
 class RecordDataLoader(adhoc.AdhocLoader):
 
     def load(self, path: str, tag: str, kwargs):
         with zopen(path, "rt") as f:
             samplelist = [json.loads(line.strip()) for line in f]
-        recorddata = RecordData(path, samplelist, kwargs)
+        recorddata = RecordData(path, samplelist)
         return recorddata
 
 

@@ -232,6 +232,7 @@ def get_global_kwargs(global_keys: List[str], **kwargs) -> dict:
     return extract_dict_with_keys(aargs, global_keys) | kwargs
 
 
+
 def is_verbose():
     aargs = get_stack_aargs()
     return aargs["verbose|=True"]
@@ -368,6 +369,7 @@ def cli(func):
 class CLIExecutor(AdhocLoader):
 
     def load(self, path, tag, kwargs):
+        import kogitune.loads.cli
         import kogitune.datasets.cli
         import kogitune.metrics.cli
 
@@ -399,23 +401,3 @@ class FuncFromKwargsLoader(AdhocLoader):
 
 FuncFromKwargsLoader().register("from_kwargs")
 
-
-WORDLIST_MAP = {}
-
-def wordlist(func):
-    global WORDLIST_MAP
-    WORDLIST_MAP[func.__name__] = func
-    return func
-
-class WordListLoader(AdhocLoader):
-
-    def load(self, path, tag, kwargs):
-        global WORDLIST_MAP
-
-        path = path.lower()
-
-        if path in WORDLIST_MAP:
-            return WORDLIST_MAP[path]()
-        raise KeyError(path)
-
-WordListLoader().register("wordlist")

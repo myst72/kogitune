@@ -33,9 +33,9 @@ from .main import (
     AdhocArguments,
     AdhocArguments as Arguments,
     parse_main_args,
-    load_class,
-    instantiate_from_dict,
-    launch_subcommand,
+    # load_class,
+    # instantiate_from_dict,
+    # launch_subcommand,
     aargs_from,
     get,
     get_list, 
@@ -45,40 +45,13 @@ from .main import (
     LoaderObject,
     cli,
     from_kwargs,
-    wordlist,
 )
 
-from .inspects import extract_kwargs, check_kwargs, get_parameters, get_version  # OLD
+#from .inspects import extract_kwargs, check_kwargs, get_parameters, get_version  # OLD
 
 from .adhoc_tqdm import (
     adhoc_progress_bar as progress_bar,
     adhoc_tqdm as tqdm,
 )
 
-
-def safe_import(module: str, pip_install_modules=None):
-    import importlib, os
-
-    try:
-        module = importlib.import_module(module)
-    except ModuleNotFoundError:
-        cmd = f"pip3 install {pip_install_modules or module}"
-        print(cmd)
-        os.system(cmd)
-        module = importlib.import_module(module)
-    if hasattr(module, '__version__'):
-        verbose_print(module.__name__, module.__version__)
-    return module
-
-
-def pip(module: str):
-    import os
-
-    print(f"pip3 install {module}")
-    os.system(f"pip3 install {module}")
-
-
-def load_tokenizer(tokenizer=None, **kwargs):
-    from ..stores.tokenizers import load_tokenizer
-
-    return load_tokenizer(tokenizer, **kwargs)
+from .modules import safe_import, pip

@@ -38,7 +38,11 @@ def dict_as_json(data: dict):
         raise ValueError()
 
 def dump_dict_as_json(data: dict, indent=2):
-    return json.dumps(dict_as_json(data), indent=indent)
+    return json.dumps(dict_as_json(data), indent=indent, ensure_ascii=False)
+
+###
+
+
 
 
 ### ログ

@@ -54,6 +54,11 @@ def add_multi_token_cli(**kwargs):
         tokenizer.save_pretrained(save_path)
 
 @adhoc.cli
+def add_vocab_cli(**kwargs):
+    add_multi_token_cli(**kwargs)
+
+
+@adhoc.cli
 def split_dataset_cli(**kwargs):
     """
     巨大なデータセットを複数ファイルに分割します。
