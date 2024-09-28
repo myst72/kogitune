@@ -130,19 +130,25 @@ def make_mte(tokenizer, new_tokens:List[str], bases:List[int], start=1000, end=N
 
     vocab_size = len(tokenizer)
     adhoc.print('Vocab. size//語彙サイズ', vocab_size)
+    token_ids = tokenizer.encode("", max_length=8)
+    offset = len(token_ids)
     before_tokens_len = []
     before_tokens = []
+    good_tokens = []
     for token in new_tokens:
-        token_ids = tokenizer.encode(token)
-        before_tokens_len.append(len(token_ids))
-        before_tokens.append(token_ids)
-        print(token, len(token_ids), token_ids)
+        token_ids = tokenizer.encode(token, add_special_tokens=False)
+        if len(token_ids) > 2:
+            good_tokens.append(token)
+            before_tokens_len.append(len(token_ids))
+            before_tokens.append(token_ids)
+            print(token, len(token_ids), token_ids)
+    adhoc.print('Additional Vocab. size//追加する語彙サイズ', len(good_tokens))
 
-    tokenizer.add_tokens(new_tokens)
+    tokenizer.add_tokens(good_tokens)
     if isinstance(bases[0], str):
-        print(bases)
+        adhoc.print('特殊トークン', bases, end=' ')
         bases = tokenizer.convert_tokens_to_ids(bases)
-        print(bases)
+        adhoc.print(bases)
     
     tokenizer.init_kwargs["mte_orig_size"]=vocab_size
     tokenizer.init_kwargs["mte_bases"]=bases
@@ -152,8 +158,8 @@ def make_mte(tokenizer, new_tokens:List[str], bases:List[int], start=1000, end=N
 
     after_tokens_len = []
     after_tokens = []
-    for token in new_tokens:
-        token_ids = tokenizer.encode(token)
+    for token in good_tokens:
+        token_ids = tokenizer.encode(token, add_special_tokens=False)
         after_tokens_len.append(len(token_ids))
         after_tokens.append(token_ids)
         print(token, len(token_ids), token_ids, tokenizer.decode(token_ids))

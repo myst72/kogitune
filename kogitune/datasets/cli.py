@@ -1,3 +1,4 @@
+import json
 from ..loads.commons import *
 
 @adhoc.cli
@@ -12,7 +13,29 @@ def train_bpe_cli(**kwargs):
 
 @adhoc.from_kwargs
 def word_list_from_kwargs(**kwargs):
-    words = adhoc.get_list(kwargs, "word_list|words|!!")    
+    words = adhoc.get_list(kwargs, "word_list|words|!!")
+    if len(words) == 1 and '.jsonl' in words[0]:
+        path, args, tag = adhoc.parse_path(words[0], parent_args=kwargs)
+        key = adhoc.get(args, 'key|=word')
+        words = []
+        with open(path) as f:
+            for line in f.readlines():
+                d = json.loads(line)
+                try:
+                    words.append(d[key])
+                except KeyError as e:
+                    adhoc.print('存在するkeyをちょうだい', d)
+                    raise e
+        return words
+    if len(words) == 1 and words[0].endswith('.txt'):
+        path, args, _ = adhoc.parse_path(words[0], parent_args=kwargs)
+        words = []
+        with open(path) as f:
+            for line in f.readlines():
+                if line.startswith('#'):
+                    continue
+                    words.append(line.strip())
+        return words
     return words  
 
 
