@@ -76,6 +76,9 @@ def load_hftokenizer(tokenizer_path, /, **kwargs):
     if "TOKENIZERS_PARALLELISM" not in os.environ:
         os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
+    if "PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION" not in os.environ:
+        os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
+
     tokenizer_path, args, _ = adhoc.parse_path(tokenizer_path, parent_args=kwargs)
     args = adhoc.safe_kwargs(args, *tokenizer_available_keys)
     if "trust_remote_code" not in args:
@@ -86,7 +89,8 @@ def load_hftokenizer(tokenizer_path, /, **kwargs):
         adhoc.print('Loading..//トークンナイザー', tokenizer_path, args, once=tokenizer_path)
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, **args)
     except BaseException as e:
-        adhoc.notice_kwargs(tokenizer_path, args, exception=e)
+        raise e
+        #adhoc.notice_kwargs(tokenizer_path, args, exception=e)
     if 'mte_bases' in tokenizer.init_kwargs:
         from ..datasets.tokenizers_mte import load_mte_config
         load_mte_config(tokenizer)

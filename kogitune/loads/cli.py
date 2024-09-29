@@ -28,22 +28,26 @@ def texteval_cli(**kwargs):
     """
     with adhoc.aargs_from(**kwargs) as aargs:
         files = listfy(aargs["files|!!"])
-        texteval = adhoc.load("texteval", aargs["texteval|!!"], **aargs)
+        textevals = adhoc.list_values(aargs["texteval|!!"])
         transform = adhoc.load("from_kwargs", "transform", **aargs)
         format_key = aargs["text_key|input_key|format|=text"]
-        record_key = texteval.record_key()
-        record_key = aargs[f"output_key|record_key|={record_key}"]
 
         for filepath in files:
             record = adhoc.load("record", filepath)
             head = record.rename_save_path(**aargs)
-            try:
-                verbose = VerboseCounter(head)
-                for sample in record.samples(0, head):
-                    sample = transform.transform(sample)
-                    text = adhoc.get_formatted_text(sample, format_key)
-                    sample[record_key] = texteval(text)
-                    verbose.print_sample(sample)
-            except KeyError as e:
-                report_KeyError(e, sample)
+            for i, texteval in enumerate(textevals, start=1):
+                texteval = adhoc.load("texteval", texteval, **aargs)
+                record_key = texteval.record_key()
+                record_key = aargs[f"output_key|record_key|={record_key}"]
+                if i > 1:
+                    record_key = f"{record_key}.{i}"
+                try:
+                    verbose = VerboseCounter(head, **aargs)
+                    for sample in record.samples(0, head):
+                        sample = transform.transform(sample)
+                        text = adhoc.get_formatted_text(sample, format_key)
+                        sample[record_key] = texteval(text)
+                        verbose.print_sample(sample)
+                except KeyError as e:
+                    report_KeyError(e, sample)
             record.save()

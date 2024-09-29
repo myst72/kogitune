@@ -270,7 +270,7 @@ class RecordData(adhoc.LoaderObject):
 
         if save_path:
             safe_makedirs(save_path)
-            with open(save_path, mode=self.mode, encoding="utf-8") as w:
+            with open(save_path, mode=self.save_mode, encoding="utf-8") as w:
                 for result in self.samplelist:
                     assert isinstance(result, dict)
                     print(json.dumps(result, ensure_ascii=False), file=w)
@@ -280,6 +280,10 @@ class RecordData(adhoc.LoaderObject):
         if head:
             self.save_path = None
             return head
+        output_path = adhoc.get(kwargs, "output_path")
+        if output_path:
+            self.save_path = os.path.join(output_path, basename(self.save_path, split_ext=False))
+            return None
         output_file = adhoc.get(kwargs, "output_file")
         if output_file:
             if os.path.exists(output_file):
