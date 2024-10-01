@@ -15,7 +15,7 @@ class TextEval(object):
         self.reverse = False
 
     def setups(self, kwargs, *keys):
-        adhoc.aargs_from(**kwargs).record(
+        adhoc.kwargs_from_stacked(**kwargs).record(
             *keys,
             dic=self.rec, field=self,
         )
@@ -253,7 +253,7 @@ class MaxMinFilter(TextFilter):
         評価関数フィルタを作る
         """
         super().__init__(*args, **kwargs)
-        aargs = adhoc.aargs_from(**kwargs)
+        aargs = adhoc.kwargs_from_stacked(**kwargs)
         #print('@@@', aargs)
         aargs.record(
             'eval|!!',
@@ -318,7 +318,7 @@ def maxmin(eval_fn_name, **kwargs):
         raise e
 
 def filter_maxmin_cli(**kwargs):
-    with adhoc.aargs_from(**kwargs) as aargs:
+    with adhoc.kwargs_from_stacked(**kwargs) as aargs:
         if 'record_key' not in aargs:
             text_filter = MaxMinFilter(record_key=True, **kwargs)
         else:

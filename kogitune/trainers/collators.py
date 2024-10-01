@@ -5,7 +5,7 @@ from ..commons import CHUNK_MAGIC
 class TextBlockCollator(object):
     def __init__(self, max_length, aargs):
         self.max_length = max_length
-        self.is_seq2seq = aargs['datatype|data_type|=text'] == 'seq2seq'
+        self.is_seq2seq = adhoc.get(kwargs, 'datatype|data_type|=text'] == 'seq2seq'
 
     def __call__(self, data):
         return torch.tensor(data[:self.max_length].astype(np.int64), dtype=torch.long)
@@ -13,7 +13,7 @@ class TextBlockCollator(object):
 class NumpyCollator(object):
     def __init__(self, max_length, aargs):
         self.max_length = max_length
-        self.is_seq2seq = aargs['datatype|data_type|=text'] == 'seq2seq'
+        self.is_seq2seq = adhoc.get(kwargs, 'datatype|data_type|=text'] == 'seq2seq'
 
     def __call__(self, data):
         return {
@@ -23,7 +23,7 @@ class NumpyCollator(object):
 class TensorCollator(object):
     def __init__(self, max_length, aargs):
         self.max_length = max_length
-        self.is_seq2seq = aargs['datatype|data_type|=text'] == 'seq2seq'
+        self.is_seq2seq = adhoc.get(kwargs, 'datatype|data_type|=text'] == 'seq2seq'
 
     def __call__(self, data):
         if self.is_seq2seq:

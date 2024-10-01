@@ -10,7 +10,7 @@ from .commons import *
 TEXTEVAL_MAP = {}
 
 
-class TextEval(adhoc.LoaderObject):
+class TextEval(adhoc.AdhocObject):
     def __init__(self, name: str, subpath: str):
         self.path = name
         self.subpath = subpath
@@ -35,7 +35,7 @@ class TextEval(adhoc.LoaderObject):
 TextEval.register("text-length|char-length|char")
 
 # TODO: 未使用
-# class FractionEval(adhoc.LoaderObject):
+# class FractionEval(adhoc.AdhocObject):
 #     def __init__(self, a, b):
 #         self.a = a
 #         self.b = b

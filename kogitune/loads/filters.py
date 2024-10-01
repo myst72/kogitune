@@ -6,7 +6,7 @@ from .commons import *
 FILTER_MAP = {}
 
 
-class TextFilter(adhoc.LoaderObject):
+class TextFilter(adhoc.AdhocObject):
     def __init__(self, name: str, subpath: str, kwargs):
         self.path = name
         self.subpath = subpath

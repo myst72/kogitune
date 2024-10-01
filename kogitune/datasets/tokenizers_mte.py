@@ -109,20 +109,23 @@ def wrap_decode(original_method):
 
 ALREADY_WRAPPED = False
 
-def load_mte_config(tokenizer):
+def enable_mte(tokenizer):
     global ALREADY_WRAPPED
+    if ALREADY_WRAPPED == False and hasattr(tokenizer, '_tokenizer'):
+        Tokenizer = tokenizer._tokenizer.__class__
+        Tokenizer.encode = wrap_encode(Tokenizer.encode)
+        Tokenizer.encode_batch = wrap_encode_batch(Tokenizer.encode_batch)
+        Tokenizer.decode = wrap_decode(Tokenizer.decode)
+        Tokenizer.decode_batch = wrap_decode(Tokenizer.decode_batch)
+        ALREADY_WRAPPED = True
+
+def load_mte_config(tokenizer):
     if 'mte_bases' in tokenizer.init_kwargs and hasattr(tokenizer, '_tokenizer'):
         tokenizer._tokenizer.mte_bases = tokenizer.init_kwargs['mte_bases']
         tokenizer._tokenizer.mte_start = tokenizer.init_kwargs['mte_start']
         tokenizer._tokenizer.mte_end = tokenizer.init_kwargs['mte_end']
         tokenizer._tokenizer.mte_orig_size = tokenizer.init_kwargs['mte_orig_size']
-        if ALREADY_WRAPPED == False:
-            Tokenizer = tokenizer._tokenizer.__class__
-            Tokenizer.encode = wrap_encode(Tokenizer.encode)
-            Tokenizer.encode_batch = wrap_encode_batch(Tokenizer.encode_batch)
-            Tokenizer.decode = wrap_decode(Tokenizer.decode)
-            Tokenizer.decode_batch = wrap_decode(Tokenizer.decode_batch)
-            ALREADY_WRAPPED = True
+        enable_mte(tokenizer)
 
 def make_mte(tokenizer, new_tokens:List[str], bases:List[int], start=1000, end=None, /, **kwargs):
     import numpy as np

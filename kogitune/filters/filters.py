@@ -101,17 +101,17 @@ class TextFilter(object):
             N=N,
             num_workers=num_workers,
         ) | kwargs
-        with adhoc.aargs_from(**kwargs) as aargs:
-            files = list_filenames(aargs['files|!!'])
-            N = aargs['head|N|=-1']
-            num_workers = aargs['num_workers|=1']
-            output_file = aargs['output_file|output_path|output']
+        with adhoc.kwargs_from_stacked(**kwargs) as aargs:
+            files = list_filenames(adhoc.get(kwargs, 'files|!!'])
+            N = adhoc.get(kwargs, 'head|N|=-1']
+            num_workers = adhoc.get(kwargs, 'num_workers|=1']
+            output_file = adhoc.get(kwargs, 'output_file|output_path|output']
             adhoc.notice('フィルタ', input_files=files, filter_config=self.as_json())
             if output_file is None:
                 result = self._from_jsonl_single(files, N=100, output_file=output_file)
                 adhoc.notice(f"先頭100件だけフィルタしたよ! output_file='file.jsonl'で最後まで保存できるからね")
                 return result
-            prefix = aargs['prefix|=']
+            prefix = adhoc.get(kwargs, 'prefix|=']
             output_file = f'{prefix}{output_file}'
             with adhoc.start_timer() as timer:
                 if num_workers == 1:
@@ -119,7 +119,7 @@ class TextFilter(object):
                 else:
                     result = self._from_jsonl_multi(files, N=N, output_file=output_file, num_workers=num_workers)
                 timer.notice('フィルタ、無事完了。お疲れ様', **result)
-                if aargs['with_linenum|=True']:
+                if adhoc.get(kwargs, 'with_linenum|=True']:
                     output_file = rename_linenum(output_file, N=result['remaining'], rename=True)
                 adhoc.saved(output_file, '前処理済みファイル//pre-processed file')
                 result['output_file'] = output_file
@@ -183,8 +183,8 @@ def load_filter(json_filename)->TextFilter:
         return adhoc.instantiate_from_dict(json.load(f), check=TextFilter)
 
 def filter_cli(**kwargs):
-    with adhoc.aargs_from(**kwargs) as aargs:
-        filter_config = aargs['filter_config|!!']
+    with adhoc.kwargs_from_stacked(**kwargs) as aargs:
+        filter_config = adhoc.get(kwargs, 'filter_config|!!']
         text_filter = load_filter(filter_config)
         text_filter.run_for_cli(**kwargs)
 

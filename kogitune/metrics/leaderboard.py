@@ -37,10 +37,10 @@ class LeaderBoard(object):
         df.to_csv(self.filepath, index=False)
 
 
-    def score(self, testdata, metric_name, groupby=None, save_to=None):
+    def score(self, testdata, name, groupby=None, save_to=None):
         group_scores = {"ALL": []}
         for sample in testdata.samples():
-            score = sample[metric_name]
+            score = sample[name]
             group_scores["ALL"].append(score)
             if groupby:
                 group = sample[groupby]
@@ -52,7 +52,7 @@ class LeaderBoard(object):
         for group in group_scores.keys():
             scores = np.array(group_scores[group])
             testname = (
-                datatag if metric_name == "exact_match" else f"{datatag}/{metric_name}"
+                datatag if name == "exact_match" else f"{datatag}/{name}"
             )
             self.update(modeltag, testname, scores.mean())
             if save_to:
@@ -68,6 +68,28 @@ class LeaderBoard(object):
                 }
                 save_score(save_to, record)
                 adhoc.saved(save_to, "スコアの記録")
+
+    def pivot_table(self, samples:List[dict], name:List[str], index=None, groupby=None):
+        if index is None:
+            index = '{dataset}' if groupby is None else 'ALL'
+        if index.startswith('{') and index.endswith('}'):
+            index = adhoc.get(sample[0], index[1:-1])
+        group_scores = {index: []}
+        name = name.split('#')[0]
+        tag = name.split('#')[-1]
+        for sample in samples:
+            score = sample[name]
+            group_scores[index].append(score)
+            if groupby:
+                group = sample[groupby]
+                if group not in group_scores:
+                    group_scores[group] = []
+                scores = group_scores[group]
+                scores.append(score)
+        for group in group_scores.keys():
+            scores = np.array(group_scores[group])
+            self.update(group, tag, scores.mean())
+
 
     def show(self, transpose=True, width=32):
         if os.path.exists(self.filepath):

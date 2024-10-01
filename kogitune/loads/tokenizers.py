@@ -6,8 +6,21 @@ import unicodedata
 
 from .commons import *
 
+class TokenizerLoader(adhoc.AdhocLoader):
 
-class Tokenizer(adhoc.LoaderObject):
+    def load(self, path, tag, kwargs):
+        if path == "simple":
+            return SimpleTokenizer(path, kwargs)
+        if path.startswith("mecab") or path.startswith("janome"):
+            return JanomeTokenizer(path, kwargs)
+        if path.startswith("sudachi"):
+            return SudachiTokenizer(path, kwargs)
+        return HFTokenizer(path, kwargs)
+
+TokenizerLoader().register("tokenizer")
+
+
+class Tokenizer(adhoc.AdhocObject):
     def __init__(self, path, kwargs):
         self.path = path
         self.pathargs = {}
@@ -27,22 +40,6 @@ class Tokenizer(adhoc.LoaderObject):
     def __call__(self, text: str) -> List[str]:
         return text.split(" ")
 
-
-class TokenizerLoader(adhoc.AdhocLoader):
-
-    def load(self, path, tag, kwargs):
-        if path == "simple":
-            return SimpleTokenizer(path, kwargs)
-        if path.startswith("mecab") or path.startswith("janome"):
-            return JanomeTokenizer(path, kwargs)
-        if path.startswith("sudachi"):
-            return SudachiTokenizer(path, kwargs)
-        return HFTokenizer(path, kwargs)
-
-
-TokenizerLoader().register("tokenizer")
-
-
 def tokenizer_base64(tokenizer_path, length=8):
     tokenizer_path = tokenizer_path.partition("?")[0]
     prefix = tokenizer_path.partition("/")[0]
@@ -55,7 +52,7 @@ def tokenizer_base64(tokenizer_path, length=8):
     )
     return f"{prefix}({base64_encoded})"
 
-tokenizer_available_keys = [
+tokenizer_args_list = [
     "cache_dir",
     "force_download",
     "resume_download",
@@ -71,7 +68,7 @@ tokenizer_available_keys = [
 ]
 
 def load_hftokenizer(tokenizer_path, /, **kwargs):
-    from transformers import AutoTokenizer
+    transformers = adhoc.safe_import('transformers')
 
     if "TOKENIZERS_PARALLELISM" not in os.environ:
         os.environ["TOKENIZERS_PARALLELISM"] = "true"
@@ -79,38 +76,50 @@ def load_hftokenizer(tokenizer_path, /, **kwargs):
     if "PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION" not in os.environ:
         os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 
-    tokenizer_path, args, _ = adhoc.parse_path(tokenizer_path, parent_args=kwargs)
-    args = adhoc.safe_kwargs(args, *tokenizer_available_keys)
-    if "trust_remote_code" not in args:
-        args["trust_remote_code"] = True
-    # if "use_fast" not in args:
-    #     args["use_fast"] = False
-    try:
-        adhoc.print('Loading..//トークンナイザー', tokenizer_path, args, once=tokenizer_path)
-        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, **args)
-    except BaseException as e:
-        raise e
-        #adhoc.notice_kwargs(tokenizer_path, args, exception=e)
+    with adhoc.kwargs_from_path(tokenizer_path, **kwargs) as kwargs:
+        tokenizer_path = kwargs.pop('_path')
+        args = adhoc.safe_kwargs(kwargs, *tokenizer_args_list)
+        # if "trust_remote_code" not in args:
+        #     args["trust_remote_code"] = True
+        # if "use_fast" not in args:
+        #     args["use_fast"] = False
+        adhoc.verbose_print('Loading a tokenizer//トークンナイザーのロード中', 
+                            tokenizer_path, args, once=tokenizer_path)
+        try:
+            tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_path, **args)
+        except BaseException as e:
+            adhoc.report_ArgumentError(
+                message='Failed to load the tokenizer//トークンナイザーのロード失敗', 
+                called = adhoc.function_called("AutoTokenizer.from_pretrained", 
+                                            tokenizer_path, **args),
+                throw=e)
+    # マルチトークン拡張
     if 'mte_bases' in tokenizer.init_kwargs:
         from ..datasets.tokenizers_mte import load_mte_config
         load_mte_config(tokenizer)
     return tokenizer, args
 
+
 @adhoc.from_kwargs
-def tokenizer_from_kwargs(**kwargs):
+def hftokenizer_from_kwargs(**kwargs):
     tokenizer = kwargs.get('tokenizer', '')
     if not isinstance(tokenizer, str):
         return tokenizer
-    keys = 'tokenizer_path|tokenizer|model_path'
+
+    adhoc_keys = 'tokenizer_path|tokenizer|model_path'
     use_default = kwargs.get('use_default', False)
     if use_default:
         if not isinstance(use_default, str):
-            use_default = os.environ.get("DEFAULT_TOKENIZER_PATH", "llm-jp/llm-jp-1.3b-v1.0")
-        keys = f'{keys}|!{use_default}'
+            use_default = os.environ.get("TOKENIZER_PATH", "llm-jp/llm-jp-1.3b-v1.0")
+        adhoc_keys = f'{adhoc_keys}|!{use_default}'
     else:
-        keys = f'{keys}|!!'
-    tokenizer_path = adhoc.get(kwargs, keys)
+        adhoc_keys = f'{adhoc_keys}|!!'
+    tokenizer_path = adhoc.get(kwargs, adhoc_keys)
     return load_hftokenizer(tokenizer_path, **kwargs)[0]
+
+@adhoc.from_kwargs
+def tokenizer_from_kwargs(**kwargs):
+    return hftokenizer_from_kwargs(**kwargs)
 
 
 class HFTokenizer(Tokenizer):
@@ -145,7 +154,7 @@ class HFTokenizer(Tokenizer):
         return max(len(self.tokenizer.encode(text)) - 1, 0)
 
     def __call__(self, text: str) -> List[str]:
-        return self.tokenize(text)
+        return self.tokenizer.tokenize(text)
 
 
 ##
@@ -248,10 +257,11 @@ class SudachiTokenizer(Tokenizer):
     def __init__(self, path, kwargs):
         self.path = path
         self.pathargs = {}
-        sudachipy = adhoc.safe_import('sudachipy', "sudachipy sudachidict_core")
-
-        self.sudachi = sudachipy.dictionary.Dictionary().create()
-        self.mode = sudachipy.tokenizer.Tokenizer.SplitMode.C
+        adhoc.safe_import('sudachipy', "sudachipy sudachidict_core")
+        dictionary = adhoc.safe_import('sudachipy.dictionary', 'sudachidict_core')
+        tokenizer = adhoc.safe_import('sudachipy.tokenizer', 'sudachidict_core')
+        self.sudachi = dictionary.Dictionary().create()
+        self.mode = tokenizer.Tokenizer.SplitMode.C
 
     def __call__(self, text: str) -> List[str]:
         tokens = [m.surface() for m in self.sudachi.tokenize(text, self.mode)]

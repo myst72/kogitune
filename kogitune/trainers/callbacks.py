@@ -57,10 +57,10 @@ class TimeoutStoppingCallback(transformers.TrainerCallback):
             control.should_training_stop = True
 
 def load_callbacks(**kwargs):
-    with adhoc.aargs_from(**kwargs) as aargs:
+    with adhoc.kwargs_from_stacked(**kwargs) as aargs:
         callbacks = []
         if 'max_time' in aargs or 'sge_walltime_sec' in aargs:
-            max_time = aargs['max_time|sge_walltime_sec']
-            safe_time = aargs['safe_time|=300']
+            max_time = adhoc.get(kwargs, 'max_time|sge_walltime_sec']
+            safe_time = adhoc.get(kwargs, 'safe_time|=300']
             callbacks.append(TimeoutStoppingCallback(max_time=max_time, safe_time=safe_time))
         return callbacks

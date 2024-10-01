@@ -112,12 +112,12 @@ def unigram_tokenizer(vocab=VOCAB, unk_id=UNK_ID, byte_fallback=True):
 
 
 def create_tokenizer(input_files, vocab, save_path, aargs):
-    add_list = aargs["add_list"]
+    add_list = adhoc.get(kwargs, "add_list"]
     if add_list is not None:
         adhoc.notice("語彙追加", add_list)
         vocab = add_vocab_score(vocab, add_list)
 
-    remove_list = aargs["remove_list"]
+    remove_list = adhoc.get(kwargs, "remove_list"]
     if remove_list is not None:
         adhoc.notice("語彙削除", add_list)
         vocab = remove_vocab_score(vocab, remove_list)
@@ -153,9 +153,9 @@ def train_unigram(input_files, aargs):
 
     # トレーナーの設定
     trainer = trainers.UnigramTrainer(
-        vocab_size=aargs["vocab_size|=32000"],
-        n_sub_iterations=aargs["n_sub_iterations|=2"],
-        max_piece_length=aargs["max_piece_length|=16"],
+        vocab_size=adhoc.get(kwargs, "vocab_size|=32000"],
+        n_sub_iterations=adhoc.get(kwargs, "n_sub_iterations|=2"],
+        max_piece_length=adhoc.get(kwargs, "max_piece_length|=16"],
         unk_token=UNK_TOKEN,
         special_tokens=[EOS_TOKEN, UNK_TOKEN, MASK_TOKEN],
     )
@@ -172,10 +172,10 @@ def train_unigram(input_files, aargs):
 
 @adhoc.cli
 def train_unigram_cli(**kwargs):
-    with adhoc.aargs_from(**kwargs) as aargs:
-        files = list_filenames(aargs["files|!!"])
-        save_path = aargs["save_path|=unigram_tokenizer"]
-        with TemporaryFiles(files, aargs["wakachi|=False"], merge=False) as temp:
+    with adhoc.kwargs_from_stacked(**kwargs) as aargs:
+        files = list_filenames(adhoc.get(kwargs, "files|!!"])
+        save_path = adhoc.get(kwargs, "save_path|=unigram_tokenizer"]
+        with TemporaryFiles(files, adhoc.get(kwargs, "wakachi|=False"], merge=False) as temp:
             vocab = train_unigram(temp.input_files, aargs)
             create_tokenizer(temp.input_files, vocab, save_path, aargs)
 
@@ -232,10 +232,10 @@ def train_spm_cli(**kwargs):
         )
         | kwargs
     )
-    with adhoc.aargs_from(**kwargs) as aargs:
-        files = list_filenames(aargs["files|!!"])
-        use_wakachi = aargs["use_wakachi|=False"]
-        save_path = aargs["save_path|=spm_tokneizer"]
+    with adhoc.kwargs_from_stacked(**kwargs) as aargs:
+        files = list_filenames(adhoc.get(kwargs, "files|!!"])
+        use_wakachi = adhoc.get(kwargs, "use_wakachi|=False"]
+        save_path = adhoc.get(kwargs, "save_path|=spm_tokneizer"]
         with TemporaryFiles(files, use_wakachi) as temp:
             kwargs = adhoc.extract_kwargs(
                 spm.SentencePieceTrainer.train,
@@ -357,13 +357,13 @@ def token_fraction(files, save_path):
 def train_bpe_cli(**kwargs):
     from tokenizers import Tokenizer, models, pre_tokenizers, processors, trainers, decoders
 
-    with adhoc.aargs_from(**kwargs) as aargs:
-        files = list_filenames(aargs["files|!!"])
-        save_path = aargs["save_path"]
+    with adhoc.kwargs_from_stacked(**kwargs) as aargs:
+        files = list_filenames(adhoc.get(kwargs, "files|!!"])
+        save_path = adhoc.get(kwargs, "save_path"]
 
         # トークナイザーの初期化
         tokenizer = Tokenizer(models.BPE())
-        if aargs["bytelevel|byte_level|=True"]:
+        if adhoc.get(kwargs, "bytelevel|byte_level|=True"]:
             tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
             tokenizer.decoder = decoders.ByteLevel()
         else:
@@ -375,8 +375,8 @@ def train_bpe_cli(**kwargs):
 
         # トレーナーの設定
         trainer = trainers.BpeTrainer(
-            vocab_size=aargs["vocab_size|=32000"],
-            min_frequency=aargs["min_frequency|=2"],
+            vocab_size=adhoc.get(kwargs, "vocab_size|=32000"],
+            min_frequency=adhoc.get(kwargs, "min_frequency|=2"],
             special_tokens=[EOS_TOKEN, UNK_TOKEN, MASK_TOKEN],
         )
         with adhoc.start_timer() as timer:

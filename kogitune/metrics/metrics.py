@@ -32,7 +32,7 @@ def _split_digit(s):
 
 
 
-class Metric(adhoc.LoaderObject):
+class Metric(adhoc.AdhocObject):
     """
     Base class for evaluators that use a model to obtain answers for generated prompts,
     evaluate them based on specified METRICS_MAP, and calculate scores.

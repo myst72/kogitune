@@ -113,15 +113,15 @@ class Packer(object):
 class NoizePacker(Packer):
     def __init__(self, tokenizer, aargs):
         super().__init__(tokenizer, aargs)
-        self.noize_map = self.load_token_noize_prob(aargs['noize_map|noize|!!'])
-        self.mask_token_id = aargs['mask_token_id|mask_id']
+        self.noize_map = self.load_token_noize_prob(adhoc.get(kwargs, 'noize_map|noize|!!'])
+        self.mask_token_id = adhoc.get(kwargs, 'mask_token_id|mask_id']
         if self.mask_token_id is None:
-            mask_token = aargs['mask_token|mask']
+            mask_token = adhoc.get(kwargs, 'mask_token|mask']
             if mask_token is not None:
                 ids = self.tokenizer.convert_tokens_to_ids([mask_token])
                 adhoc.notice('マスクトークン', mask_token, ids)
                 self.mask_token_id = ids[0]
-        self.random_seed = aargs['random_seed|=42']
+        self.random_seed = adhoc.get(kwargs, 'random_seed|=42']
 
     def load_token_noize_prob(self, noize_path):
         noize_ratio = noize_path if isinstance(noize_path, float) else 0.05
@@ -161,7 +161,7 @@ class NoizePacker(Packer):
         return new_tokens
 
 def find_packer(tokenizer, aargs):
-    data_type = aargs['datatype|data_type|=text']
+    data_type = adhoc.get(kwargs, 'datatype|data_type|=text']
     if data_type == 'text':
         if 'noize_map' in aargs or 'noize' in aargs:
             return NoizePacker(tokenizer, aargs)
@@ -173,7 +173,7 @@ def find_packer(tokenizer, aargs):
 ## Store 用
 
 def get_store_path(filenames, tokenizer, aargs):
-    store_path = aargs['store_path|store_dir|store']
+    store_path = adhoc.get(kwargs, 'store_path|store_dir|store']
     if store_path is None:
         filebase = basename(rename_linenum(filenames[0], N=0, rename=False))
         tokenizer_name = tokenizer_id(tokenizer)
@@ -186,7 +186,7 @@ def get_store_path(filenames, tokenizer, aargs):
             filebase = store_path
             tokenizer_name = tokenizer_id(tokenizer)
             store_path=f'{tokenizer_name}/{filebase}'
-            aargs['store_path'] = store_path
+            adhoc.get(kwargs, 'store_path'] = store_path
             adhoc.print(f'保存先/Saving To.. {store_path}')
 
 def sum_all_numbers(dics: List[dict]):
@@ -202,7 +202,7 @@ def store_files(files: List[str], tokenizer=None, **kwargs):
     :param files: ファイル名、もしくはファイル名のリスト
     """
     filenames = list_filenames(files)
-    with adhoc.aargs_from(**kwargs) as aargs:
+    with adhoc.kwargs_from_stacked(**kwargs) as aargs:
         tokenizer = adhoc.load_tokenizer(tokenizer=tokenizer)
         packer = find_packer(tokenizer, aargs)
 
@@ -214,8 +214,8 @@ def store_files(files: List[str], tokenizer=None, **kwargs):
                         input_files=filenames, 
                         tokenizer=tokenizer.name_or_path)
             store = DatasetStore(store_path)
-            num_workers = aargs['num_workers|=1']
-            N=aargs['head|N|=-1']
+            num_workers = adhoc.get(kwargs, 'num_workers|=1']
+            N=adhoc.get(kwargs, 'head|N|=-1']
             with adhoc.start_timer() as timer:
                 call_args = dict(extra_tokens = EMPTY_TOKENS, input=None, output=None)
                 if num_workers == 1:
@@ -240,7 +240,7 @@ def store_files(files: List[str], tokenizer=None, **kwargs):
                 record = packer.rec | record
                 make_report(record, packer.block_size)
                 timer.notice('お連れ様!! トークン化完了', iteration=record['texts'], **record)
-            store.save(tokenizer, skip_validation=aargs['skip_validation'])
+            store.save(tokenizer, skip_validation=adhoc.get(kwargs, 'skip_validation'])
     return str(os.path.abspath(store_path))
 
 def make_report(rec, block_size):

@@ -57,7 +57,7 @@ class ReplacementFilter(TextFilter):
         置換フィルタを作る
         """
         super().__init__()
-        adhoc.aargs_from(**kwargs).record(
+        adhoc.kwargs_from_stacked(**kwargs).record(
             'patterns|!!',
             'uppercase|=True',
             field=self, dic=self.rec,
@@ -90,6 +90,6 @@ def replace(patterns: Union[str, List[str]], **kwargs):
     return ReplacementFilter(patterns, **kwargs)
 
 def replace_cli(**kwargs):
-    with adhoc.aargs_from(**kwargs) as aargs:
+    with adhoc.kwargs_from_stacked(**kwargs) as aargs:
         text_filter = ReplacementFilter(**kwargs)
         text_filter.run_for_cli(**kwargs)

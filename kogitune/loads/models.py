@@ -26,7 +26,7 @@ class ModelLoader(adhoc.AdhocLoader):
 
 ModelLoader().register("model")
 
-class Model(adhoc.LoaderObject):
+class Model(adhoc.AdhocObject):
     def __init__(self, model_path, tag, kwargs):
         """
         Base class for abstracting a model.
@@ -143,23 +143,23 @@ OpenAIModel.regiser("openai")
 
 
 # class BedrockModel(Model):
-#     def __init__(self, model_path, aargs):
-#         super().__init__(model_path, aargs)
+#     def __init__(self, model_path, kwargs):
+#         super().__init__(model_path, kwargs)
 #         try:
 #             import boto3
 
 #             self.bedrock = boto3.client(
 #                 "bedrock-runtime",
-#                 aws_access_key_id=aargs["aws_access_key_id"],
-#                 aws_secret_access_key=aargs["aws_secret_access_key"],
-#                 region_name=aargs["region_name|=ap-northeast-1"],
+#                 aws_access_key_id=adhoc.get(kwargs, "aws_access_key_id"],
+#                 aws_secret_access_key=adhoc.get(kwargs, "aws_secret_access_key"],
+#                 region_name=adhoc.get(kwargs, "region_name|=ap-northeast-1"],
 #             )
 #         except ModuleNotFoundError as e:
 #             raise e
 #         default_args = {
-#             "max_tokens_to_sample": aargs["max_tokens|max_length|=512"],
-#             "temperature": aargs["temperature|=0.2"],
-#             "top_p": aargs["top_p|=0.95"],
+#             "max_tokens_to_sample": adhoc.get(kwargs, "max_tokens|max_length|=512"],
+#             "temperature": adhoc.get(kwargs, "temperature|=0.2"],
+#             "top_p": adhoc.get(kwargs, "top_p|=0.95"],
 #         }
 #         self.generate_args = default_args
 
@@ -194,49 +194,42 @@ OpenAIModel.regiser("openai")
 
 ## HF
 
-dtype_mapping = {
-    "float": torch.float,
-    "float32": torch.float32,
-    "float64": torch.float64,
-    "double": torch.double,
-    "float16": torch.float16,
-    "half": torch.half,
-    "bfloat16": torch.bfloat16,
-    "int": torch.int,
-    "int32": torch.int32,
-    "int64": torch.int64,
-    "long": torch.long,
-    "int16": torch.int16,
-    "short": torch.short,
-    "int8": torch.int8,
-    "uint8": torch.uint8,
-    "bool": torch.bool,
-}
+model32_kw_list = [
+    "use_auth_token", 
+    "trust_remote_code", 
+    "device_map", 
+    "attn_implementation"
+]
 
-
-def get_dtype_from_string(dtype):
-    if isinstance(dtype, str):
-        if dtype in dtype_mapping:
-            return dtype_mapping.get(dtype)
-        raise ValueError(f"unknown {dtype} dtype in PyTorch")
-    return dtype
-
-
-def load_model_float(model_path, model_args):
+def load_hfmodel32(model_path, /, **kwargs):
     from transformers import AutoModelForCausalLM
 
+    model_args = adhoc.safe_kwargs(kwargs, *model32_kw_list)
+    adhoc.verbose_print('Loading the model//モデルロード', 
+                        model_path, model_args, once=model_path)
     try:
-        adhoc.print('Loading//モデルロード', model_path, model_args)
         model = AutoModelForCausalLM.from_pretrained(model_path, **model_args)
-        return model
     except BaseException as e:
-        print(f"Unable to load HuggingFace Model: {model_path} {model_args}")
-        raise e
+        adhoc.report_ArgumentError(
+            message='Failed to load the model//モデルのロード失敗', 
+            called = adhoc.function_called("AutoModelForCausalLM.from_pretrained", 
+                                            model_path, **model_args),
+            throw=e)
+    return model, model_args
 
 
-def load_model_4bit(model_path, model_args):
+model4bit_kw_list = [
+    "use_auth_token", 
+    "trust_remote_code", 
+    "device_map", 
+    "attn_implementation"
+]
+
+def load_hfmodel4bit(model_path, /, **kwargs):
     try:
         from transformers import BitsAndBytesConfig, AutoModelForCausalLM
+
+        model_args = adhoc.safe_kwargs(kwargs, *model4bit_kw_list)
 
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
@@ -244,40 +237,78 @@ def load_model_4bit(model_path, model_args):
             bnb_4bit_quant_type="nf4",
             bnb_4bit_compute_dtype=torch.bfloat16,
         )
+    
         model = AutoModelForCausalLM.from_pretrained(
             model_path, quantization_config=bnb_config, **model_args
         )
-        return model
-    except BaseException as e:
-        adhoc.notice(
-            f"4ビット量子化モデルがロードできまえん//Unable to load 4Bit Quantimization Model: {e}"
+        return model, model_args
+    except BaseException:
+        adhoc.print(
+            f"Unable to load 4Bit Quantimization Model///4ビット量子化モデルがロードできません"
         )
-        adhoc.print("とりあえず、ノーマルモデルを試します//Trying normal model...")
-    return load_model_float(model_path, model_args)
+        adhoc.print("Trying a normal model...///とりあえず、ノーマルモデルを試します")
+    return load_hfmodel32(model_path, **kwargs)
 
 
-HF_MODEL = ["use_auth_token", "trust_remote_code", "device_map", "attn_implementation"]
-
-
-def load_hfmodel(model_path, kwargs):
-    model_args = adhoc.safe_kwargs(kwargs, *HF_MODEL)
-    if "use_auth_token" not in model_args:
-        model_args["use_auth_token"] = adhoc.get(kwargs, "hf_token|HF_TOKEN")
-    if "trust_remote_code" not in model_args:
-        model_args["trust_remote_code"] = True
+def load_hfmodel(model_path, /, **kwargs):
+    if "use_auth_token" not in kwargs:
+        kwargs["use_auth_token"] = adhoc.get(os.environ, "HF_TOKEN")
+    if "trust_remote_code" not in kwargs:
+        kwargs["trust_remote_code"] = True
     # MacOS 上でエラーになる
-    if torch.cuda.is_available() and "device_map" not in model_args:
-        model_args["device_map"] = "auto"
-    if model_args.get("attn_implementation") == "flash_attention_2":
-        model_args["torch_dtype"] = torch.bfloat16
-    if "torch_dtype" in model_args:
-        model_args["torch_dtype"] = get_dtype_from_string(model_args["torch_dtype"])
+    if torch.cuda.is_available() and "device_map" not in kwargs:
+        kwargs["device_map"] = "auto"
+    if kwargs.get("attn_implementation") == "flash_attention_2":
+        kwargs["torch_dtype"] = torch.bfloat16
+    if "torch_dtype" in kwargs:
+        kwargs["torch_dtype"] = to_dtype(kwargs["torch_dtype"])
 
     if adhoc.get(kwargs, "use_4bit|=False"):
-        model = load_model_4bit(model_path, model_args)
+        return load_hfmodel4bit(model_path, **kwargs)
     else:
-        model = load_model_float(model_path, model_args)
-    return model
+        return load_hfmodel32(model_path, **kwargs)
+
+def to_dtype(dtype):
+    dtype_mapping = {
+        "float": torch.float,
+        "float32": torch.float32,
+        "float64": torch.float64,
+        "double": torch.double,
+        "float16": torch.float16,
+        "half": torch.half,
+        "bfloat16": torch.bfloat16,
+        "int": torch.int,
+        "int32": torch.int32,
+        "int64": torch.int64,
+        "long": torch.long,
+        "int16": torch.int16,
+        "short": torch.short,
+        "int8": torch.int8,
+        "uint8": torch.uint8,
+        "bool": torch.bool,
+    }
+    if isinstance(dtype, str):
+        if dtype in dtype_mapping:
+            return dtype_mapping.get(dtype)
+        raise ValueError(f"unknown {dtype} dtype in PyTorch")
+    return dtype
+
+@adhoc.from_kwargs
+def hfmodel_from_kwargs(**kwargs):
+    model = kwargs.get('model', '')
+    if not isinstance(model, str):
+        return model
+
+    adhoc_keys = 'model_path|model'
+    use_default = kwargs.get('use_default', False)
+    if use_default:
+        if not isinstance(use_default, str):
+            use_default = os.environ.get("MODEL_PATH", "kogi-jwu/chico-0.03b")
+        keys = f'{keys}|!{use_default}'
+    else:
+        keys = f'{keys}|!!'
+    model_path = adhoc.get(kwargs, adhoc_keys)
+    return load_hfmodel(model_path, **kwargs)[0]
 
 
 ## 私は現在、データセットとバッチ処理でゼロショットテキスト分類器パイプラインを使用しています。
@@ -297,16 +328,17 @@ class HFModel(Model):
         transformers = adhoc.safe_import('transformers')
 
         super().__init__(model_path, tag, kwargs)
-        tokenizer_path = self.get(kwargs, f"tokenizer_path|={model_path}")
-        self.tokenizer = adhoc.load("_tokenizer", tokenizer_path, **kwargs)
+        tokenizer_path = adhoc.get(kwargs, f'tokenizer_path|model_path|={model_path}')
+        self.tokenizer = adhoc.load('_tokenizer', tokenizer_path, **kwargs)
+
         # なぜか必要らしい（↓）
         self.tokenizer.pad_token = self.tokenizer.eos_token
-        # if 'max_length' in aargs:
+        # if 'max_length' in kwargs:
         #     self.tokenizer.trancation = True
-        self.model = load_hfmodel(model_path, kwargs)
+        self.model, self.pathargs = load_hfmodel(model_path, **kwargs)
         self.device = next(self.model.parameters()).device
-        adhoc.verbose_print("MODEL DEIVCE/モデルがロードされたデバイス", self.device)
-        hf_token = self.get(kwargs, "_hf_token|HF_TOKEN|use_auth_token")
+        adhoc.verbose_print(f"Model has loaded on {self.device}.///モデルは{self.device}上にロードされました")
+        hf_token = adhoc.get(kwargs, "use_auth_token|HF_TOKEN")
         self.generator = transformers.pipeline(
             "text-generation",
             model=self.model,
@@ -469,10 +501,10 @@ HFModel.regiser("hf")
 
 
 class vLLMModel(Model):
-    def __init__(self, model_path, aargs):
+    def __init__(self, model_path, kwargs):
         from vllm import LLM, SamplingParams
 
-        super().__init__(model_path, aargs)
+        super().__init__(model_path, kwargs)
         self.llm = LLM(model=model_path)
         self.SamplingParams = SamplingParams
         self.gen_args = {}
@@ -503,26 +535,3 @@ class vLLMModel(Model):
                 sample["output"] = sample["output"][0]
 
 
-# CLI
-
-IPSUM = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
-
-
-@adhoc.cli
-def test_model_cli(**kwargs):
-    with adhoc.aargs_from(**kwargs) as aargs:
-        if "max_new_tokens" not in aargs:
-            aargs["max_new_tokens"] = aargs["max_new_tokens|!256"]
-        model = adhoc.load("model", aargs["model_path|model"])
-        print(model)
-        prompt = aargs["test_prompt|prompt"]
-        if prompt is None:
-            adhoc.print("プロンプトは、test_prompt='Lorem ipsum ...'で変更できるよ")
-            prompt = IPSUM
-        sample_list = [{"input": prompt}]
-        model.eval_gen(sample_list)
-        for sample in sample_list:
-            input = sample["input"]
-            output = sample["output"]
-            adhoc.print(f"[入力//INPUT]\n{input}")
-            adhoc.print(f"[出力//OUTPUT]\n{output}")

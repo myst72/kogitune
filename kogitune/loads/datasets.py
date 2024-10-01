@@ -7,7 +7,7 @@ from .commons import *
 from .files import file_jsonl_reader, write_config, safe_makedirs
 
 
-class DataStream(adhoc.LoaderObject):
+class DataStream(adhoc.AdhocObject):
     def __init__(self, path, kwargs):
         self.path = path
         self.pathargs = {}
@@ -250,7 +250,7 @@ def rename_path_as_jsonl(path):
     else:
         return f"{basename(path, split_dir=False)}.jsonl"
 
-class RecordData(adhoc.LoaderObject):
+class RecordData(adhoc.AdhocObject):
     def __init__(self, path: str, samplelist: List[dict]):
         self.path = path
         self.samplelist = samplelist

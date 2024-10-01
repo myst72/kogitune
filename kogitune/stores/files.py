@@ -193,11 +193,11 @@ def _find_reader_fn(reader_name):
 
 
 def adhoc_line_reader(**kwargs):
-    with adhoc.aargs_from(**kwargs) as aargs:
-        template = aargs["json_template"]
+    with adhoc.kwargs_from_stacked(**kwargs) as aargs:
+        template = adhoc.get(kwargs, "json_template"]
         if template:
             return _JSONTemplate(template)
-        reader_name = aargs["line_reader|=strip"]
+        reader_name = adhoc.get(kwargs, "line_reader|=strip"]
         return _find_reader_fn(reader_name)
 
 
@@ -258,8 +258,8 @@ def read_multilines(
 
 
 def rename_linenum_cli(**kwargs):
-    with adhoc.aargs_from(**kwargs) as aargs:
-        for file in aargs["files"]:
+    with adhoc.kwargs_from_stacked(**kwargs) as aargs:
+        for file in adhoc.get(kwargs, "files"]:
             n = extract_linenum(file)
             if n is None:
                 n = get_linenum(file)
@@ -291,8 +291,8 @@ def split_file(input_file, lines_per_file):
 
 
 def split_lines_cli(**kwargs):
-    with adhoc.aargs_from(**kwargs) as aargs:
-        files = list_filenames(aargs["files|!!"])
-        lines_per_file = aargs["lines_per_file|lines|max|N|=1000000"]
+    with adhoc.kwargs_from_stacked(**kwargs) as aargs:
+        files = list_filenames(adhoc.get(kwargs, "files|!!"])
+        lines_per_file = adhoc.get(kwargs, "lines_per_file|lines|max|N|=1000000"]
         for file in files:
             split_file(file, lines_per_file)

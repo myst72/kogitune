@@ -11,7 +11,7 @@ class UnicodeNormalization(TextFilter):
         Unicode正規化フィルタを作る
         """
         super().__init__(*args, **kwargs)
-        adhoc.aargs_from(**kwargs).record(
+        adhoc.kwargs_from_stacked(**kwargs).record(
             'form|=NFKC',
             field=self, dic=self.rec,
         )
@@ -29,7 +29,7 @@ class DuplicatedLineFilter(TextFilter):
         :param prefix_length: 重複をチェックする先頭の文字数
         """
         super().__init__(*args, **kwargs)
-        adhoc.aargs_from(**kwargs).record(
+        adhoc.kwargs_from_stacked(**kwargs).record(
             'prefix_length|=8',
             field=self, dic=self.rec,
         )
@@ -63,7 +63,7 @@ class LineByLineFilter(ComposeFilter):
         :param prefix_length: 重複をチェックする先頭の文字数
         """
         super().__init__(*filters, **kwargs)
-        adhoc.aargs_from(**kwargs).record(
+        adhoc.kwargs_from_stacked(**kwargs).record(
             'separator|sep|=\n',
             field=self, dic=self.rec,
         )
@@ -132,7 +132,7 @@ class ChunkFilter(ComposeFilter):
         :param prefix_length: 重複をチェックする先頭の文字数
         """
         super().__init__(*filters, **kwargs)
-        adhoc.aargs_from(**kwargs).record(
+        adhoc.kwargs_from_stacked(**kwargs).record(
             'max_chunk_length|chunk_length|=200',
             field=self, dic=self.rec,
         )

@@ -2394,7 +2394,7 @@ class LangSetFilter(TextFilter):
         評価関数フィルタを作る
         """
         super().__init__(*args, **kwargs)
-        adhoc.aargs_from(**kwargs).record(
+        adhoc.kwargs_from_stacked(**kwargs).record(
             "record_key|=lang",
             "langset",
             "max_chunk_length|=200",
@@ -2459,6 +2459,6 @@ def langset(langset, **kwargs):
 
 
 def filter_langset_cli(**kwargs):
-    with adhoc.aargs_from(**kwargs) as aargs:
+    with adhoc.kwargs_from_stacked(**kwargs) as aargs:
         aargs.errors = "main"
         LangSetFilter(**kwargs).run_for_cli(**kwargs)

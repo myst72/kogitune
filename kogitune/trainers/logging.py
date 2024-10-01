@@ -11,17 +11,17 @@ class DummyWandb:
 def load_wandb(**kwargs):
     try:
         import wandb
-        with adhoc.aargs_from(**kwargs) as aargs:
+        with adhoc.kwargs_from_stacked(**kwargs) as aargs:
             if "wandb_team" in aargs:
                 wandb.init(
-                    entity=aargs["wandb_team"],
-                    project=aargs["project"],
-                    name=aargs["run_name"],
+                    entity=adhoc.get(kwargs, "wandb_team"],
+                    project=adhoc.get(kwargs, "project"],
+                    name=adhoc.get(kwargs, "run_name"],
                 )
             else:
                 wandb.init(
-                    project=aargs["project"],
-                    name=aargs["run_name"],
+                    project=adhoc.get(kwargs, "project"],
+                    name=adhoc.get(kwargs, "run_name"],
                 )
             return wandb
     except ModuleNotFoundError:

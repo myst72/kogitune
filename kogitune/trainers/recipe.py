@@ -158,20 +158,20 @@ class DatasetRecipe(Dataset):
 
 
 # def check_composer_args(aargs: None):
-#     if "resume_from_checkpoint" in aargs and not aargs["overwrite_output_dir|=True"]:
-#         resume_from_checkpoint = safe_dir(str(aargs["resume_from_checkpoint"]))
+#     if "resume_from_checkpoint" in aargs and not adhoc.get(kwargs, "overwrite_output_dir|=True"]:
+#         resume_from_checkpoint = safe_dir(str(adhoc.get(kwargs, "resume_from_checkpoint"]))
 #         if "output_dir" not in aargs and os.path.isdir(resume_from_checkpoint):
-#             aargs["output_dir"] = os.path.dirname(resume_from_checkpoint)
+#             adhoc.get(kwargs, "output_dir"] = os.path.dirname(resume_from_checkpoint)
 
 #     if "project" not in aargs:
-#         aargs["project"] = f"kogitune-sandbox"
+#         adhoc.get(kwargs, "project"] = f"kogitune-sandbox"
 
 #     if "run_name" not in aargs:
-#         aargs["run_name"] = f"run{os.getpid()}"
+#         adhoc.get(kwargs, "run_name"] = f"run{os.getpid()}"
 
 #     if "output_dir" not in aargs:
-#         aargs["output_dir"] = create_output_path(aargs["run_name"])
-#         adhoc.print(f"出力先:", aargs["output_dir"])
+#         adhoc.get(kwargs, "output_dir"] = create_output_path(adhoc.get(kwargs, "run_name"])
+#         adhoc.print(f"出力先:", adhoc.get(kwargs, "output_dir"])
 #     return aargs
 
 
@@ -194,14 +194,14 @@ class DatasetRecipe(Dataset):
 #                 self.datasets, self.collator_fn, batch_size
 #             )
 
-        # resume_path = self.aargs["resume_from_checkpoint"]
+        # resume_path = self.adhoc.get(kwargs, "resume_from_checkpoint"]
         # if resume_path == True:
-        #     resume_path = self.aargs["output_dir"]
+        #     resume_path = self.adhoc.get(kwargs, "output_dir"]
         # if isinstance(resume_path, str):
         #     resume_step = get_trained_global_step(resume_path)
         #     if resume_step == 0:
         #         adhoc.print(f"チェックポイント {resume_path} が見つかりません")
-        #         self.aargs["resume_from_checkpoint"] = False
+        #         self.adhoc.get(kwargs, "resume_from_checkpoint"] = False
         #     if resume_step > 0:
         #         adhoc.print(f"チェックポイント step={resume_step} から再開します。")
         #         self.train_dataset.skip(resume_step * batch_size)

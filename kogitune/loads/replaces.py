@@ -6,7 +6,7 @@ from .commons import *
 REPLACEMENT_MAP = {}
 
 
-class Replacement(adhoc.LoaderObject):
+class Replacement(adhoc.AdhocObject):
     def __init__(self, path=None, replaced="", kwargs=None):
         self.path = path
         self.replaced = replaced or "<URL>"
@@ -35,7 +35,7 @@ class Replacement(adhoc.LoaderObject):
             REPLACEMENT_MAP[name.lower()] = self.__class__
 
 
-# class ComposeReplacement(adhoc.LoaderObject):
+# class ComposeReplacement(adhoc.AdhocObject):
 #     def __init__(self, *replacements):
 #         self.replacements = replacements
 

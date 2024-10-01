@@ -36,13 +36,13 @@ def inspect_model(model):
 
 def load_train_model(**kwargs):
     from transformers import AutoModelForCausalLM
-    with adhoc.aargs_from(**kwargs) as aargs:
-        model_path = aargs['model_path|!!']
-        model_args = aargs['model_args|model_config']
+    with adhoc.kwargs_from_stacked(**kwargs) as aargs:
+        model_path = adhoc.get(kwargs, 'model_path|!!']
+        model_args = adhoc.get(kwargs, 'model_args|model_config']
         if model_args is None:
             model_path, model_args = adhoc.parse_path_args(model_path)
         if 'use_auth_token' not in model_args:
-            model_args['use_auth_token'] = aargs['hf_token']
+            model_args['use_auth_token'] = adhoc.get(kwargs, 'hf_token']
         if 'trust_remote_code' not in model_args:
             model_args['trust_remote_code'] = True
         # MacOS 上でエラーになる
@@ -75,9 +75,9 @@ def get_checkpoint_global_step(path: str):
     return get_checkpoint_global_step(newest)
 
 def check_resume_from_checkpoint(aargs):
-    output_dir=aargs['output_dir|=output']
-    overwrite_output_dir = aargs[f'overwrite_output_dir|={False}']
-    resume_from_checkpoint = aargs[f'resume_from_checkpoint']
+    output_dir=adhoc.get(kwargs, 'output_dir|=output']
+    overwrite_output_dir = adhoc.get(kwargs, f'overwrite_output_dir|={False}']
+    resume_from_checkpoint = adhoc.get(kwargs, f'resume_from_checkpoint']
     if overwrite_output_dir:
         if resume_from_checkpoint:
             adhoc.notice(f'overwrite_output_dir={overwrite_output_dir}とresume_from_checkpoint={resume_from_checkpoint}が矛盾するね。さてさて')
@@ -102,9 +102,9 @@ def check_resume_from_checkpoint(aargs):
     return resume_from_checkpoint, output_dir, overwrite_output_dir
 
 def configure_train_args(**kwargs):
-    with adhoc.aargs_from(**kwargs) as aargs:
-        global_batch_size = aargs['global_batch_size|batch_size|=8']
-        device_batch_size = aargs['device_batch_size|=8']
+    with adhoc.kwargs_from_stacked(**kwargs) as aargs:
+        global_batch_size = adhoc.get(kwargs, 'global_batch_size|batch_size|=8']
+        device_batch_size = adhoc.get(kwargs, 'device_batch_size|=8']
         gas = global_batch_size // device_batch_size
         adhoc.notice('バッチサイズ', 
                         global_batch_size=global_batch_size, 
@@ -112,7 +112,7 @@ def configure_train_args(**kwargs):
                         gradient_accumulation_steps=gas,
         )
         resume_from_checkpoint, output_dir, overwrite_output_dir = check_resume_from_checkpoint(aargs=aargs)
-        bf16_enabled = aargs[f'bf16|={bf16_is_available()}']
+        bf16_enabled = adhoc.get(kwargs, f'bf16|={bf16_is_available()}']
         fp16_enabled = False
         optim='adamw_torch'
         if torch.cuda.is_available():
@@ -122,30 +122,30 @@ def configure_train_args(**kwargs):
         train_args = dict(
             output_dir=output_dir,
             overwrite_output_dir=overwrite_output_dir,
-            per_device_train_batch_size=aargs[f'per_device_train_batch_size|={device_batch_size}'],
-            gradient_accumulation_steps=aargs[f'gradient_accumulation_steps|={gas}'],
+            per_device_train_batch_size=adhoc.get(kwargs, f'per_device_train_batch_size|={device_batch_size}'],
+            gradient_accumulation_steps=adhoc.get(kwargs, f'gradient_accumulation_steps|={gas}'],
             # per_device_eval_batch_size=64,
-            auto_find_batch_size=aargs['auto_find_batch_size|=False'],  # バッチサイズ自動
-            do_eval=aargs['do_eval|=False'],
+            auto_find_batch_size=adhoc.get(kwargs, 'auto_find_batch_size|=False'],  # バッチサイズ自動
+            do_eval=adhoc.get(kwargs, 'do_eval|=False'],
             # evaluation_strategy='steps',
             # eval_steps=50,
-            optim=aargs[f'optim|={optim}'],
-            learning_rate=aargs['learning_rate|=4e-4'], 
-            weight_decay=aargs['weight_decay|=0.1'],
-            adam_beta1=aargs['adam_beta1|=0.9'],
-            adam_beta2=aargs['adam_beta2|=0.999'],
-            adam_epsilon=aargs['adam_epsilon|=1e-8'],
-            max_grad_norm=aargs['max_grad_norm|=1.0'],
-            num_train_epochs=aargs['num_train_epochs|=2'],
-            max_steps=aargs['max_steps|=-1'],
-            lr_scheduler_type=aargs['lr_scheduler_type|=cosine'],
-            logging_steps=aargs['logging_steps|=10'],
+            optim=adhoc.get(kwargs, f'optim|={optim}'],
+            learning_rate=adhoc.get(kwargs, 'learning_rate|=4e-4'], 
+            weight_decay=adhoc.get(kwargs, 'weight_decay|=0.1'],
+            adam_beta1=adhoc.get(kwargs, 'adam_beta1|=0.9'],
+            adam_beta2=adhoc.get(kwargs, 'adam_beta2|=0.999'],
+            adam_epsilon=adhoc.get(kwargs, 'adam_epsilon|=1e-8'],
+            max_grad_norm=adhoc.get(kwargs, 'max_grad_norm|=1.0'],
+            num_train_epochs=adhoc.get(kwargs, 'num_train_epochs|=2'],
+            max_steps=adhoc.get(kwargs, 'max_steps|=-1'],
+            lr_scheduler_type=adhoc.get(kwargs, 'lr_scheduler_type|=cosine'],
+            logging_steps=adhoc.get(kwargs, 'logging_steps|=10'],
             dataloader_pin_memory=False,
-            save_steps=aargs['save_steps|=1000'],
-            save_total_limit=aargs['save_total_limit'],
-            save_only_model=aargs['save_only_model|=False'],
-            neftune_noise_alpha=aargs['neftune_noise_alpha'],
-            torch_compile=aargs['torch_compile|=False'],
+            save_steps=adhoc.get(kwargs, 'save_steps|=1000'],
+            save_total_limit=adhoc.get(kwargs, 'save_total_limit'],
+            save_only_model=adhoc.get(kwargs, 'save_only_model|=False'],
+            neftune_noise_alpha=adhoc.get(kwargs, 'neftune_noise_alpha'],
+            torch_compile=adhoc.get(kwargs, 'torch_compile|=False'],
             bf16=bf16_enabled, 
             fp16=fp16_enabled,
         )
@@ -165,19 +165,19 @@ def formatting_prompts_func(example):
 def finetune_cli(**kwargs):
     from transformers import TrainingArguments
     from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
-    with adhoc.aargs_from(**kwargs) as aargs:
+    with adhoc.kwargs_from_stacked(**kwargs) as aargs:
         dataset = load_train_dataset()
         template = load_template(sample=dataset[0])
 
         tokenizer = adhoc.load_tokenizer()
-        max_seq_length = aargs['max_seq_length|max_length']
+        max_seq_length = adhoc.get(kwargs, 'max_seq_length|max_length']
         if max_seq_length is None:
             max_seq_length = template.calc_length(dataset, tokenizer=tokenizer)
             adhoc.notice(f'max_seq_length={max_seq_length}に設定したよ。95%辺り。お気に召さないなら自分で設定してね')
-        if aargs['safe_finetune|={True}'] or aargs['test_run|head']:
+        if adhoc.get(kwargs, 'safe_finetune|={True}'] or adhoc.get(kwargs, 'test_run|head']:
             dataset2 = template.filter(dataset, 
                                         tokenizer=tokenizer, 
-                                        max_length=max_seq_length, head=aargs['test_run|head'])
+                                        max_length=max_seq_length, head=adhoc.get(kwargs, 'test_run|head'])
             adhoc.notice(f'データセットを{len(dataset)}件から{len(dataset2)}件にフィルタ。(これで学習しやすくなるね）')
             dataset = dataset2
 
@@ -203,10 +203,10 @@ def finetune_cli(**kwargs):
         result = trainer.train(resume_from_checkpoint=resume_from_checkpoint)
         adhoc.notice('お疲れ様！ファインチューン完了です', result=result)
         save_trained_model(model, tokenizer, 
-                            save_path=aargs['save_model_path|save_path'])
+                            save_path=adhoc.get(kwargs, 'save_model_path|save_path'])
 
 def save_trained_model(model, tokenizer=None, save_path=None, default_path='model'):
-    # save_path = aargs['save_model_path|save_path']
+    # save_path = adhoc.get(kwargs, 'save_model_path|save_path']
     if save_path is None:
         save_path = default_path
         if save_path and not os.path.exists(save_path):

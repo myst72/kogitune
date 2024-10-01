@@ -3,7 +3,7 @@ from ..loads.commons import adhoc
 
 SCRATCH_MAP = {}
 
-class ScratchModel(adhoc.LoaderObject):
+class ScratchModel(adhoc.AdhocObject):
     def __init__(self, name: str, kwargs):
         self.path = name
         self.pathargs = {}
@@ -19,29 +19,27 @@ class ScratchModel(adhoc.LoaderObject):
 
     def build_config(self, kwargs):
         tokenizer = self.tokenizer
-        with adhoc.aargs_from(**kwargs) as aargs:
-            num_attention_heads = aargs["num_attention_heads|n_heads|=4"]
+        with adhoc.kwargs_from_stacked(**kwargs) as kwargs:
+            num_attention_heads = adhoc.get(kwargs, "num_attention_heads|n_heads|=4")
             if "hidden_size" in kwargs:
-                hidden_size = aargs["hidden_size|=1024"]
+                hidden_size = adhoc.get(kwargs, "hidden_size|=1024")
             else:
-                hidden_size = aargs["head_dim|n_dims|=32"] * num_attention_heads
+                hidden_size = adhoc.get(kwargs, "head_dim|n_dims|=32") * num_attention_heads
             scratch_config = dict(
-                # model_type=aargs["model_type|=llama2"],
-                vocab_size=aargs[f"vocab_size|={tokenizer.vocab_size}"],
+                # model_type=adhoc.get(kwargs, "model_type|=llama2"],
+                vocab_size=adhoc.get(kwargs, f"vocab_size|={tokenizer.vocab_size}"),
                 pad_token_id=tokenizer.pad_token_id,
                 bos_token_id=tokenizer.bos_token_id,
                 eos_token_id=tokenizer.eos_token_id,
                 num_attention_heads=num_attention_heads,
                 hidden_size=hidden_size,
-                intermediate_size=aargs["intermediate_size|=512"],
-                num_hidden_layers=aargs["num_hidden_layers|n_layers|=12"],
-                num_key_value_heads=aargs[
-                    "num_key_value_heads|head_groups|n_groups|=4"
-                ],
-                max_position_embeddings=aargs["max_position_embeddings|=4096"],
+                intermediate_size=adhoc.get(kwargs, "intermediate_size|=512"),
+                num_hidden_layers=adhoc.get(kwargs, "num_hidden_layers|n_layers|=12"),
+                num_key_value_heads=adhoc.get(kwargs, "num_key_value_heads|head_groups|n_groups|=4"),
+                max_position_embeddings=adhoc.get(kwargs, "max_position_embeddings|=4096"),
             )
             adhoc.copy_dict_from_keys(
-                aargs,
+                kwargs,
                 scratch_config,
                 "num_key_value_heads|group_heads|n_groups",
                 "hidden_act",
@@ -85,7 +83,7 @@ class ScratchBuilder(adhoc.AdhocLoader):
         global SCRATCH_MAP
         path, path.partition(":")[0]
         # TODO: config 系の処理は？
-        # extra_config = aargs["scratch_config|scratch_kwargs"]
+        # extra_config = adhoc.get(kwargs, "scratch_config|scratch_kwargs"]
 
         path = path.lower().replace("_", "-")
         if path in SCRATCH_MAP:

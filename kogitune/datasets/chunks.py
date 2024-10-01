@@ -109,7 +109,7 @@ def download_file_async(url, local_file):
 EMPTY_TOKENS = []
 
 
-class Packer(adhoc.LoaderObject):
+class Packer(adhoc.AdhocObject):
     def __init__(self, kwargs):
         self.pathargs = {}
         self.get(
@@ -342,7 +342,7 @@ def store(base_dir, dataset, **kwargs):
 ###
 
 
-class TokenDataset(adhoc.LoaderObject):
+class TokenDataset(adhoc.AdhocObject):
 
     def __init__(self, base: str, chunkfiles: List[dict], **kwargs):
         self.path = base
