@@ -41,7 +41,7 @@ class TestDataLoader(adhoc.AdhocLoader):
         record = RecordData(save_path, samples)
         record.tags = (modeltag, datatag)
         record.save()
-        adhoc.saved(save_path, 'Results//テストデータ')
+        adhoc.saved(save_path, 'Results///テストデータ')
         return record
 
 TestDataLoader().register("testdata")
@@ -54,14 +54,20 @@ def get_save_path(modeltag, datatag, task, /, **kwargs):
         save_path = f"{modeltag}/{datatag}_x_{modeltag}.jsonl"
     else:
         save_path = f"{modeltag}/{datatag}_{task}_x_{modeltag}.jsonl"
+    
+    output_path = adhoc.get(kwargs, "output_path")
+    if output_path:
+        save_path = os.path.join(output_path, save_path)
+
     return save_path
 
 
 def list_testdata(modeltag, eval_type, /, **kwargs):
     if 'modeltag' not in kwargs:
         kwargs['modeltag'] = modeltag
-        dataset = adhoc.get(kwargs, "dataset|!!")
-        for subset in adhoc.get_list(kwargs, "dataset_subset|dataset_name|="):
+    dataset_list = adhoc.get_list(kwargs, "dataset_list|dataset|!!")
+    for dataset in dataset_list:
+        for subset in adhoc.get_list(kwargs, "dataset_subset|="):
             kwargs['name'] = subset
             testdata = adhoc.load("testdata", dataset, **kwargs)
             yield testdata
@@ -73,9 +79,6 @@ def chain_eval(model_list: List[str], eval_type, metric_list:List[str], /, **kwa
         model = adhoc.load("model", model_path, extract_prefix="model", **kwargs)
         for testdata in list_testdata(model.modeltag, "gen", **kwargs):
             _check_generater_args(testdata, model, model.gen_args)
-            # if adhoc.get(kwargs, "selfcheck|self_check|=False"):
-            #     kwargs = selfcheck(testdata, model, **kwargs)
-            #     testdata.save()
 
             generate(testdata, model, eval_type, **kwargs)
             testdata.save()
@@ -129,30 +132,30 @@ def generate(testdata, model, eval_type, **kwargs):
         return testdata
 
     adhoc.notice(
-        "Start generation//生成をはじめます",
+        "Start generation///生成をはじめます",
         model=model,
         eval_type=eval_type,
         n=n,
         gen_args=model.gen_args,
     )
     if test_run < len(test_list):
-        adhoc.print(f"Test running head={test_run}//先頭のhead={test_run}件のみ、テストしてみます")
+        adhoc.print(f"Test running head={test_run}///先頭のhead={test_run}件のみ、テストしてみます")
         test_list = test_list[:test_run]
     try:
         with adhoc.start_timer() as timer:
-            batch_size = adhoc.get(kwargs, "eval_batch_size|batch_size|=2")
+            # batch_size = adhoc.get(kwargs, "eval_batch_size|batch_size|=2")
             model.eval(
                 test_list,
                 eval_type=eval_type,
                 n=n,
-                batch_size=batch_size,
+                # batch_size=batch_size,
             )
             timer.notice("お疲れ様！！ 生成終わりました", total=len(test_list))
     finally:
         testdata.save()
 
 def evaluate(testdata, metric_list:List[str], board:LeaderBoard, **kwargs):
-    adhoc.notice("Starting model eval//モデル評価を始めるよ", metric_list, kwargs)
+    adhoc.notice("Starting model eval///モデル評価を始めるよ", metric_list, kwargs)
     force_eval = kwargs.get('force_eval', True)
     for metric_path in listfy(metric_list):
         metric = adhoc.load("metric", metric_path, **kwargs)
@@ -160,15 +163,13 @@ def evaluate(testdata, metric_list:List[str], board:LeaderBoard, **kwargs):
             testdata.samples(), force_eval=force_eval
         )
         testdata.save()
-        if result:
-            groupby = kwargs.get('groupby', None)
-            board.score(testdata, metric.path, groupby=groupby)
+        board.score_testdata(testdata, metric.path, **kwargs)
 
 def _selfcheck(testdata, model, **kwargs):
     test_list = [sample for sample in testdata.samples() if "selfcheck" not in sample]
     if len(test_list) > 0:
         adhoc.notice(
-            "Preparing data for SelfCheck//SelfCheck用のデータを準備します",
+            "Preparing data for SelfCheck///SelfCheck用のデータを準備します",
             model=model,
             gen_args=model.gen_args,
         )

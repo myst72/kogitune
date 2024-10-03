@@ -47,11 +47,11 @@ class PassAtK(Metric):
             # スコアの良い方を記録する
             if pass_at_k[self.name] > pass_at_k2[self.name]:
                 sample["generated_code"] = singlefy(extracted_code)
-                sample[f"{self.name}_results"] = simplify_results(results, [])
+                sample[f"{self.name}_results"] = simplify_results(results)
                 return pass_at_k[self.name]
             else:
                 sample["generated_code"] = singlefy(extracted_code2)
-                sample[f"{self.name}_results"] = simplify_results(results2, [])
+                sample[f"{self.name}_results"] = simplify_results(results2)
                 return pass_at_k2[self.name]
 
         return pass_at_k[self.name]
@@ -62,20 +62,20 @@ PassAtK.register("pass@k|pass@")
 # {"0": [[0, {"task_id": 0, "passed": false, "result": "failed: name 'df_product_full' is not defined", "completion_id": 0}]]},
 
 
-def simplify_results(d, result_list):
-    return d
-    # if isinstance(d, dict):
-    #     if "passed" in d and "result" in d:
-    #         result_list.append(d)
-    #     else:
-    #         for _, v in d.items():
-    #             simplify_results(v, result_list)
-    # if isinstance(d, list):
-    #     for v in d:
-    #         simplify_results(v, result_list)
-    # return result_list
-
-
+def simplify_results(d):
+    if isinstance(d, dict):
+        if "passed" in d and "result" in d:
+            return(dict(passed=d['passed'], result=d['result']))
+        for _, v in d.items():
+            v = simplify_results(v)
+            if v is not None:
+                return v
+    if isinstance(d, (list, tuple)):
+        for v in d:
+            v = simplify_results(v)
+            if v is not None:
+                return v
+    return None
 
 def openai_extract_code(prompt, generated_text):
     """

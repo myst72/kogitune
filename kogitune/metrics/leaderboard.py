@@ -7,14 +7,21 @@ from ..loads.commons import *
 
 
 class LeaderBoard(object):
-    def __init__(self, filepath="leaderboard.csv"):
-        self.filepath = filepath
-        safe_makedirs(filepath)
+    def __init__(self, filepath="leaderboard.csv", /, **kwargs):
+        self.tablepath = filepath
+        self.scorepath = filepath.replace('.csv', '_score.jsonl')
+        safe_makedirs(self.tablepath)
+        safe_makedirs(self.scorepath)
+        # if not adhoc.get(kwargs, "overwrite|=True"):
+        #     if os.path.exists(self.tablepath):
+        #         os.unlink(self.tablepath)
+        #     if os.path.exists(self.scorepath):
+        #         os.unlink(self.scorepath)
 
     def update(self, index: str, key: str, value: float):
         found = False
-        if os.path.exists(self.filepath):
-            df = pd.read_csv(self.filepath)
+        if os.path.exists(self.tablepath):
+            df = pd.read_csv(self.tablepath)
             json_list = df.to_dict(orient="records")
             for d in json_list:
                 if d["index"] == index:
@@ -22,7 +29,6 @@ class LeaderBoard(object):
                     scores = [v for k, v in d.items()]
                     d["score"] = np.array(scores[2:]).mean()
                     found = True
-                    return
         else:
             json_list = []
         if found == False:
@@ -34,14 +40,18 @@ class LeaderBoard(object):
                 }
             )
         df = pd.DataFrame(json_list).sort_values(by="score", ascending=False)
-        df.to_csv(self.filepath, index=False)
+        df.to_csv(self.tablepath, index=False)
 
+    def append_score(self, record: dict):
+        with open(self.scorepath, "a", encoding="utf-8") as w:
+            print(json.dumps(record, ensure_ascii=False), file=w)
 
-    def score(self, testdata, name, groupby=None, save_to=None):
-        group_scores = {"ALL": []}
+    def score_testdata(self, testdata, metric_name, **kwargs):
+        groupby = kwargs.get('groupby', None)
+        group_scores = {"": []}
         for sample in testdata.samples():
-            score = sample[name]
-            group_scores["ALL"].append(score)
+            score = sample[metric_name]
+            group_scores[""].append(score)
             if groupby:
                 group = sample[groupby]
                 if group not in group_scores:
@@ -51,23 +61,23 @@ class LeaderBoard(object):
         modeltag, datatag = testdata.tags
         for group in group_scores.keys():
             scores = np.array(group_scores[group])
-            testname = (
-                datatag if name == "exact_match" else f"{datatag}/{name}"
-            )
-            self.update(modeltag, testname, scores.mean())
-            if save_to:
-                if not isinstance(save_to, str):
-                    save_to = f"{datatag}_score.jsonl"
-                record = {
-                    "model": modeltag,
-                    "data": datatag,
-                    "group": group,
-                    "metric": metric_name,
-                    "mean": scores.mean(),
-                    "scores": list(round(v, 2) for v in scores),
-                }
-                save_score(save_to, record)
-                adhoc.saved(save_to, "スコアの記録")
+            key = f"{datatag}[{group}]" if group != '' else datatag
+            if metric_name != "exact_match":
+                key = f"{key}/{metric_name}"
+            self.update(modeltag, key, scores.mean())
+            record = {
+                "model": modeltag,
+                "data": datatag,
+                "group": group,
+                "metric": metric_name,
+                "mean": scores.mean(),
+                "count": len(scores),
+                "scores": list(round(v, 2) for v in scores),
+            }
+            adhoc.verbose_print(adhoc.dump(record))
+            self.append_score(record)
+            adhoc.saved(self.scorepath, "Record of score///スコアの保存先")
+
 
     def pivot_table(self, samples:List[dict], name:List[str], index=None, groupby=None):
         if index is None:
@@ -92,8 +102,8 @@ class LeaderBoard(object):
 
 
     def show(self, transpose=True, width=32):
-        if os.path.exists(self.filepath):
-            df = pd.read_csv(self.filepath)
+        if os.path.exists(self.tablepath):
+            df = pd.read_csv(self.tablepath)
             # 表示オプションの設定
             pd.set_option("display.width", 512)  # DataFrame全体の幅を設定
             pd.set_option("display.max_colwidth", width)  # 各列の最大幅を設定
@@ -103,20 +113,21 @@ class LeaderBoard(object):
                 adhoc.print(df, face="")
 
 
-def save_score(score_file, result: dict):
-    safe_makedirs(score_file)
-    with open(score_file, "a", encoding="utf-8") as w:
-        print(json.dumps(result, ensure_ascii=False), file=w)
-
 @adhoc.from_kwargs
 def leaderboard_from_kwargs(**kwargs):
     filepath = adhoc.get(kwargs, "leaderboard|leadersboard")
+
     if filepath is None:
         project_name = adhoc.get(kwargs, "project_name|project")
         filepath = join_name("leaderboard", project_name, ext="csv")
-    elif not filepath.endswith('.csv'):
+    if not filepath.endswith('.csv'):
         filepath = f"{filepath}.csv"
-    return LeaderBoard(filepath)
+
+    output_path = adhoc.get(kwargs, "output_path")
+    if output_path:
+        filepath = os.path.join(output_path, filepath)
+    
+    return LeaderBoard(filepath, **kwargs)
 
 # def calc_mean(scores: List[float], record: dict):
 #     data = np.array(scores)
