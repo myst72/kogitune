@@ -7,9 +7,8 @@ class ScratchModel(adhoc.AdhocObject):
     def __init__(self, name: str, kwargs):
         self.path = name
         self.pathargs = {}
-        DT = os.environ.get("TOKENIZER_PATH", "llm-jp/llm-jp-1.3b-v1.0")
-        tokenizer_path = self.get(kwargs, f"tokenizer_path|tokenizer|!{DT}")
-        self.tokenizer = adhoc.load("tokenizer", tokenizer_path, use_unwrap=True)
+
+        self.tokenizer = adhoc.load("from_kwargs", "_tokenizer", use_default=True, **kwargs)
         config = self.build_config(kwargs)
         self.model = self.build(**config)
         self.print_model(self.model)
@@ -25,7 +24,7 @@ class ScratchModel(adhoc.AdhocObject):
                 hidden_size = adhoc.get(kwargs, "hidden_size|=1024")
             else:
                 hidden_size = adhoc.get(kwargs, "head_dim|n_dims|=32") * num_attention_heads
-            scratch_config = dict(
+            return dict(
                 # model_type=adhoc.get(kwargs, "model_type|=llama2"],
                 vocab_size=adhoc.get(kwargs, f"vocab_size|={tokenizer.vocab_size}"),
                 pad_token_id=tokenizer.pad_token_id,
@@ -38,20 +37,19 @@ class ScratchModel(adhoc.AdhocObject):
                 num_key_value_heads=adhoc.get(kwargs, "num_key_value_heads|head_groups|n_groups|=4"),
                 max_position_embeddings=adhoc.get(kwargs, "max_position_embeddings|=4096"),
             )
-            adhoc.copy_dict_from_keys(
-                kwargs,
-                scratch_config,
-                "num_key_value_heads|group_heads|n_groups",
-                "hidden_act",
-                "rms_norm_eps",
-                "rope_theta",
-                "tie_word_embeddings",
-                "attention_dropout",
-                "attention_bias",
-                "sliding_window",
-                "partial_rotary_factor",
-            )
-            return scratch_config
+            # adhoc.safe_kwargs(
+            #     kwargs,
+            #     "num_key_value_heads|group_heads|n_groups",
+            #     "hidden_act",
+            #     "rms_norm_eps",
+            #     "rope_theta",
+            #     "tie_word_embeddings",
+            #     "attention_dropout",
+            #     "attention_bias",
+            #     "sliding_window",
+            #     "partial_rotary_factor",
+            # )
+            # return scratch_config
 
     def build(self, **kwargs):
         from transformers import LlamaForCausalLM, LlamaConfig
@@ -81,7 +79,7 @@ class ScratchBuilder(adhoc.AdhocLoader):
 
     def load(self, path, tag, kwargs):
         global SCRATCH_MAP
-        path, path.partition(":")[0]
+        path = path.partition(":")[0]
         # TODO: config 系の処理は？
         # extra_config = adhoc.get(kwargs, "scratch_config|scratch_kwargs"]
 

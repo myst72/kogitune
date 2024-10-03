@@ -10,6 +10,7 @@ def train_bpe_cli(**kwargs):
         save_path = adhoc.get(kwargs, "save_path|!bpe")
         train_bpe(files, save_path, **kwargs)
 
+
 @adhoc.from_kwargs
 def word_list_from_kwargs(**kwargs):
     words = adhoc.get_list(kwargs, "word_list|words|!!")
@@ -47,13 +48,15 @@ def add_multi_token_cli(**kwargs):
     add_vocab_cli(**kwargs)
 
 
+
+
 @adhoc.cli
-def split_dataset_cli(**kwargs):
+def get_cli(**kwargs):
     """
     巨大なデータセットを複数ファイルに分割します。
 
     - dataset（必須）: データセットの指定
-    - max_items=1000000: １ファイルあたりの最大データ件数
+    - split=1000000: １ファイルあたりの最大データ件数
     - output_file: 出力先ファイル (拡張子は .jsonl.zst がおすすめ)
     - filter: 簡易的なフィルターも指定できます
     """
@@ -64,8 +67,8 @@ def split_dataset_cli(**kwargs):
         dataset = adhoc.get(kwargs, "dataset|dataset_source")
         start = adhoc.get(kwargs, "start|=0")
         end = adhoc.get(kwargs, "end|head")
-        max_items = adhoc.get(kwargs, "max_items|max_item|max|=1000000")
-        datastream = adhoc.load("datastream", dataset)
+        max_items = adhoc.get(kwargs, "split|!1000000")
+        datastream = adhoc.load("datastream", dataset, **kwargs)
         config = {"data_source": dataset}
 
         # 簡易的なフィルター機能を持っている
@@ -86,6 +89,25 @@ def split_dataset_cli(**kwargs):
                     splitter.write(json.dumps(sample, ensure_ascii=False))
 
 
+def store_pack_cli(**kwargs):
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+    from ..datasets.chunks import store
+
+    with adhoc.kwargs_from_stacked(**kwargs) as kwargs:
+        base_dir = adhoc.get(kwargs, "save_path|!!")
+        files = adhoc.get_list(kwargs, "files|!!")
+        data_list = [{'_file': file, **kwargs} for file in files]
+        num_workers = adhoc.get(kwargs, "num_workers|=1")
+        if num_workers == 1:
+            for data in data_list:
+                store(data)
+        else:
+            with ProcessPoolExecutor(max_workers=num_workers) as executor:
+                futures = [executor.submit(store, data) for data in data_list]        
+            for future in as_completed(futures):
+                result = future.result()
+                print(f"結果: {result}")
+
 @adhoc.cli
 def store_count_token_cli(**kwargs):
     from kogitune.trainers.recipe import DatasetRecipe
@@ -94,7 +116,7 @@ def store_count_token_cli(**kwargs):
     tqdm = adhoc.safe_import('tqdm')
     with adhoc.kwargs_from_stacked(kwargs) as kwargs:
         recipe = adhoc.load('from_kwargs', 'recipe', **kwargs)
-        tokenizer = adhoc.load('from_kwargs', 'tokenizer', **kwargs)
+        tokenizer = adhoc.load('from_kwargs', 'hftokenizer', **kwargs)
         token_ids = list(range(0, tokenizer.vocab_size))
         vocabs = tokenizer.convert_ids_to_tokens(token_ids)
         counts = [0] * tokenizer.vocab_size
@@ -119,26 +141,7 @@ def store_count_token_cli(**kwargs):
 # # tokenizer
 
 
-# def train_bpe_cli(**kwargs):
-#     from kogitune.stores.unigrams import train_bpe_cli
-
-#     train_bpe_cli(**kwargs)
-
-
-# def train_unigram_cli(**kwargs):
-#     from kogitune.stores.unigrams import train_unigram_cli
-
-#     train_unigram_cli(**kwargs)
-
-
-# def train_spm_cli(**kwargs):
-#     from kogitune.stores.unigrams import train_spm_cli
-
-#     train_spm_cli(**kwargs)
-
-
 # ## filter 系
-
 
 # def filter_cli(**kwargs):
 #     from kogitune.filters.filters import filter_cli
@@ -167,12 +170,6 @@ def store_count_token_cli(**kwargs):
 # ## store 系
 
 
-# def pack_cli(**kwargs):
-#     from .stores import store_files
-
-#     with adhoc.kwargs_from_stacked(**kwargs) as kwargs:
-#         files = adhoc.get(kwargs, "files|!!ファイルを一つ以上与えてください"]
-#         store_files(files, skip_validation=False)
 
 
 # def store_cli(**kwargs):

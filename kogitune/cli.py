@@ -4,7 +4,8 @@ from .adhocs.modules import update_beta_cli, update_cli
 from .loads.cli import texteval_cli
 
 from .datasets.cli import (
-    add_vocab_cli    
+    add_vocab_cli,
+     
 )
 
 from .trainers.cli import (

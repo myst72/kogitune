@@ -101,13 +101,13 @@ def load_hftokenizer(tokenizer_path, /, **kwargs):
 
 
 @adhoc.from_kwargs
-def hftokenizer_from_kwargs(**kwargs):
+def _tokenizer_from_kwargs(**kwargs):
     tokenizer = kwargs.get('tokenizer', '')
     if not isinstance(tokenizer, str):
         return tokenizer
 
     adhoc_keys = 'tokenizer_path|tokenizer|model_path'
-    use_default = kwargs.get('use_default', False)
+    use_default = adhoc.get(kwargs, 'use_default|=False')
     if use_default:
         if not isinstance(use_default, str):
             use_default = os.environ.get("TOKENIZER_PATH", "llm-jp/llm-jp-1.3b-v1.0")
@@ -119,7 +119,7 @@ def hftokenizer_from_kwargs(**kwargs):
 
 @adhoc.from_kwargs
 def tokenizer_from_kwargs(**kwargs):
-    return hftokenizer_from_kwargs(**kwargs)
+    return _tokenizer_from_kwargs(**kwargs)
 
 
 class HFTokenizer(Tokenizer):

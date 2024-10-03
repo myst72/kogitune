@@ -15,27 +15,23 @@ pyzstd = adhoc.safe_import("pyzstd")
 
 
 def compress_file(input_file, output_file):
-    # 入力ファイルを読み込み、出力ファイルとして圧縮する
+    """
+    入力ファイルを読み込み、出力ファイルとして圧縮する
+    """
     with open(input_file, "rb") as f_in:
         data = f_in.read()
-
-    # Zstandard形式で圧縮
     compressed_data = pyzstd.compress(data)
-
-    # 圧縮したデータを出力ファイルに書き込む
     with open(output_file, "wb") as f_out:
         f_out.write(compressed_data)
 
 
 def decompress_file(input_file, output_file):
-    # 圧縮されたファイルを読み込み、展開して出力ファイルに書き込む
+    """
+    圧縮されたファイルを読み込み、展開して出力ファイルに書き込む
+    """
     with open(input_file, "rb") as f_in:
         compressed_data = f_in.read()
-
-    # Zstandard形式のデータを展開
     decompressed_data = pyzstd.decompress(compressed_data)
-
-    # 展開したデータを出力ファイルに書き込む
     with open(output_file, "wb") as f_out:
         f_out.write(decompressed_data)
 
@@ -47,7 +43,6 @@ def save_chunk(filepath: str, blocks: List[np.ndarray]):
 
 def load_chunk(filepath: str):
     if filepath.endswith(".npz.zst"):
-        print('@', get_filesize(filepath))
         with open(filepath, "rb") as f:
             byte_data = f.read()
         byte_data = pyzstd.decompress(byte_data)
@@ -328,8 +323,10 @@ class StoreGenerator:
             write_config(config_file, config, suffix=None)
 
 
-def store(base_dir, dataset, **kwargs):
-    data = adhoc.load("datastream", dataset)
+def store(kwargs):
+    base_dir = adhoc.get(kwargs, 'store_path|save_path|!!')
+    dataset = adhoc.get('_file|dataset|!!')
+    data = adhoc.load("datastream", dataset, **kwargs)
     packer = Packer(kwargs)
     store = packer.new_store(base_dir)
     for sample in data.stream():

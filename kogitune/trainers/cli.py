@@ -1,7 +1,9 @@
 from ..loads.commons import adhoc
+from .scratch import print_model
 
 @adhoc.cli
 def scratch_cli(**kwargs):
+    
     with adhoc.kwargs_from_stacked(kwargs) as kwargs:
         model_type = adhoc.get(kwargs, 'model_type|!llama2')
         model = adhoc.load('scratch', model_type, **kwargs)
