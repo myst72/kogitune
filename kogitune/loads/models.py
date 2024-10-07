@@ -17,8 +17,10 @@ class ModelLoader(adhoc.AdhocLoader):
             tag = basename(path, split_ext=False)
         if ":" in path:
             scheme, _, model_path = path.partition(":")
-            if scheme in LOADER_MODELMAP:
-                return LOADER_MODELMAP[scheme](model_path, tag, kwargs)
+            if scheme == "openai":
+                return OpenAIModel(path, tag, kwargs)
+            # if scheme in LOADER_MODELMAP:
+            #     return LOADER_MODELMAP[scheme](model_path, tag, kwargs)
         if path.startswith("dummy"):
             return Model(path, tag, kwargs)
         else:
