@@ -1,18 +1,39 @@
-from typing import List, Union
+from typing import List
 import itertools
 import json
 import os
+import pandas as pd
 
 from .commons import *
-from .files import file_jsonl_reader, write_config, safe_makedirs
+from .files import file_jsonl_reader, safe_makedirs
+
+
+
+class DataStreamLoader(adhoc.AdhocLoader):
+
+    def load_from_map(self, path, kwargs:dict):
+        if ".json" in path:
+            return JSONLDataStream(**kwargs)
+        if path.endswith(".csv"):
+            return CSVDataStream(**kwargs)
+        name = kwargs.pop('name', None)
+        if name is not None:
+            if name == '*':
+                return HFDatasetNames(**kwargs)
+            if name != '':
+                kwargs['name'] = name
+        return HFDatasetStream(**kwargs)
+
+DataStreamLoader({}).register("datastream|dataset")
 
 
 class DataStream(adhoc.AdhocObject):
-    def __init__(self, path, kwargs):
-        self.path = path
-        self.pathargs = {}
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # self.pathargs = {}
         self.get(kwargs, "start|=0", "end|head")
 
+    @property
     def datatag(self):
         return basename(self.path)
 
@@ -42,7 +63,6 @@ class CSVDataStream(DataStream):
         samplelist = df.to_dict(orient="records")
         return iter(samplelist[start:end])
 
-
 load_dataset_kw = [
     "name",  # Optional[str] = None,
     "data_dir",  #: Optional[str] = None,
@@ -57,100 +77,126 @@ load_dataset_kw = [
     # task="deprecated",
     "streaming",  #: bool = False,
     "num_proc",  #: Optional[int] = None,
+    "trust_remote_code", 
     # storage_options: Optional[Dict] = None,
 ]
 
+def _load_hfdataset(path, args, datasets):
+    adhoc.print('Loading///ロード中', path, args, once=path)
+    try:
+        dataset = datasets.load_dataset(path, **args)
+    except BaseException as e:
+        adhoc.report_ArgumentError(message='Failed to loading///データセットのロード失敗', 
+                                       throw=e, 
+                                       called=adhoc.function_called(
+                                           'datasets.load_dataset', path, args))
+    return select_dataset_split(dataset, datasets)
+        
+def select_dataset_split(dataset, datasets):
+    if isinstance(dataset, datasets.DatasetDict):
+        keys = list(dataset.keys())
+        adhoc.verbose_print(f'splitの指定がないから、split="{keys[0]}"を使うよ', once=f'{dataset}')
+        dataset = iter(dataset[keys[0]])
+    if isinstance(dataset, datasets.IterableDatasetDict):
+        keys = list(dataset.keys())
+        adhoc.verbose_print(f'splitの指定がないから、split="{keys[0]}"を使うよ', once=f'{dataset}')
+        dataset = dataset[keys[0]]
+    return dataset
+
 
 class HFDatasetStream(DataStream):
-    def __init__(self, path, kwargs):
-        super().__init__(path, kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.suffix = ''
-        self.pathargs = adhoc.safe_kwargs(kwargs, *load_dataset_kw)
+        self.pathargs = adhoc.safe_kwargs(kwargs, load_dataset_kw)
 
+    @property
     def datatag(self):
-        datatag = basename(self.path, split_ext=False)
+        datatag = self.tag if self.tag != '' else basename(self.path, split_ext=False)
         if datatag.startswith("openai_"):
             datatag = datatag[len("openai_") :]
         return f"{datatag}{self.suffix}"
 
-    def stream(self, start=0, end=None):
+    def stream_tagging(self, start=0, end=None):
         datasets = adhoc.safe_import('datasets')
 
         if 'name' in self.pathargs:
             name = self.pathargs['name']
             self.suffix = f'_{name}'
 
-        if 'split' not in self.pathargs:
-            split_names = datasets.get_dataset_split_names(self.path, **self.pathargs)
-            self.pathargs['split'] = split_names[0]
-            adhoc.verbose_print(f'splitの指定がないから、split="{split_names[0]}"を使うよ', once=self.path)
+        dataset = _load_hfdataset(self.path, self.pathargs, datasets)
+        for item in dataset:
+            yield {"dataset": self.datatag, **item}
 
-        dataset = datasets.load_dataset(self.path, **self.pathargs)
-        if isinstance(dataset, datasets.DatasetDict):
-            keys = list(dataset.keys())
-            dataset = iter(dataset[keys[0]])
-        if isinstance(dataset, datasets.IterableDatasetDict):
-            keys = list(dataset.keys())
-            dataset = dataset[keys[0]]
+    def stream(self, start=0, end=None):
         if start != 0 or end != None:
-            return itertools.islice(dataset, start, end)
-        return dataset
+            return itertools.islice(self.stream_tagging(), start, end)
+        return self.stream_tagging()
 
 
 class HFDatasetNames(HFDatasetStream):
 
-    def stream_names(self):
-        import datasets
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.subset_names = adhoc.get_list(kwargs, "dataset_subset")
 
-        names = adhoc.load("dataset_names", self.path, use_default=[])
-        if len(names) == 0:
-            # データセットのビルダーオブジェクトを取得
+    def stream_tagging(self):
+        datasets = adhoc.safe_import('datasets')
+
+        if self.subset_names:
+            names = self.subset_names
+        else:
+            names = self.load_dataset_names(datasets)
+
+        for name in names:
+            args = self.pathargs | {"name": name}
+            dataset = _load_hfdataset(self.path, args, datasets)
+            for item in dataset:
+                yield {"dataset": self.datatag, "group": name, **item} #| {k: v for k, v in item.items()}
+
+    def load_dataset_names(self, datasets):
+        if 'JMMLU' in self.path:
+            return ['japanese_history', 'miscellaneous', 'security_studies', 'virology', 'nutrition', 
+                    'human_sexuality', 'college_mathematics', 'japanese_civics', 'econometrics', 
+                    'computer_security', 'clinical_knowledge', 'machine_learning', 'high_school_chemistry',
+                    'human_aging', 'logical_fallacies', 'sociology', 'high_school_european_history', 
+                    'high_school_statistics', 'high_school_physics', 'high_school_microeconomics', 
+                    'college_physics', 'anatomy', 'high_school_psychology', 'business_ethics', 
+                    'professional_psychology', 'college_medicine', 'elementary_mathematics', 
+                    'moral_disputes', 'marketing', 'high_school_macroeconomics', 'world_religions', 
+                    'conceptual_physics', 'professional_medicine', 'prehistory', 'high_school_mathematics', 
+                    'international_law', 'philosophy', 'japanese_idiom', 'japanese_geography', 'management',
+                      'high_school_computer_science', 'medical_genetics', 'college_computer_science', 
+                      'public_relations', 'professional_accounting', 'abstract_algebra', 'global_facts', 
+                      'college_biology', 'high_school_geography', 'world_history', 'high_school_biology', 
+                      'college_chemistry', 'electrical_engineering', 'astronomy', 'jurisprudence', 'formal_logic']
+
+        try:
             builder = datasets.load_dataset_builder(self.path)
             # データセットのサブセット（バリエーション）の名前を取得
             if hasattr(builder.info, "config_names"):
-                names = builder.info.config_names
-
-        if 'split' not in self.pathargs:
-            split_names = datasets.get_dataset_split_names(self.path, **self.pathargs)
-            self.pathargs['split'] = split_names[0]
-            adhoc.verbose_print(f'splitの指定がないから、split="{split_names[0]}"を使うよ')
-
-        for name in names:
-            dataset = datasets.load_dataset(self.path, name, self.pathargs)
-            if isinstance(dataset, datasets.dataset_dict.DatasetDict):
-                split_list = list(dataset.keys())
-                split = "test" if "test" in dataset else split_list[0]
-                dataset = dataset[split]
-            for item in dataset:
-                yield {"group": name} | {k: v for k, v in item.items()}
-
-
-    def stream(self, start=0, end=None):
-        if start != 0 or end != None:
-            return itertools.islice(self.stream_names(), start, end)
-        return self.stream_names()
-
-##
-# loader
+                return builder.info.config_names
+        except BaseException as e:
+            adhoc.print('Please set `dataset_subset`///`dataset_subset`を指定してね')
+            adhoc.exit(throw=e)
 
 
 
-class DataStreamLoader(adhoc.AdhocLoader):
-    def load(self, path: str, tag: str, kwargs):
-        if ".json" in path:
-            return JSONLDataStream(path, kwargs)
-        if path.endswith(".csv"):
-            return CSVDataStream(path, kwargs)
-        
-        name = kwargs.pop('name', None)
-        if name is not None:
-            if name == '*':
-                return HFDatasetNames(path, kwargs)
-            if name != '':
-                kwargs['name'] = name
-        return HFDatasetStream(path, kwargs)
+@adhoc.from_kwargs
+def iterate_datasets_from_kwargs(**kwargs):
+    scheme = kwargs.pop('_scheme', 'testdata')
+    dataset_list = adhoc.get_list(kwargs, "dataset_list|dataset|!!")
+    for path in dataset_list:
+        if 'dataset_subset' in kwargs:
+            path, largs, _ = adhoc.parse_path(path, parent_args=kwargs)
+            if largs.get('name') != '*':
+                for subset_name in adhoc.get_list(kwargs, "dataset_subset|="):
+                    dataset = adhoc.load(scheme, path, **(kwargs|{'_name': subset_name}))
+                    yield dataset
+                continue
+        dataset = adhoc.load(scheme, path, **kwargs)
+        yield dataset
 
-DataStreamLoader().register("datastream")
 
 class Transform(object):
     def __init__(self, transforms=None, columns=None):
@@ -206,100 +252,5 @@ class TransformIter(object):
 
     def __next__(self):
         return self.transform.transform_s(next(self.iterator))
-
-
-class RecordDataLoader(adhoc.AdhocLoader):
-
-    def load(self, path: str, tag: str, kwargs):
-        import pandas as pd
-        if path.endswith('.txt'):
-            df = pd.read_table(path, sep='\n', header=None)
-            df.columns = ['text']
-            dict_rows = df.to_dict(orient='records')
-            return RecordData(path, dict_rows)
-        if path.endswith('.csv'):
-            df = pd.read_csv(path)
-            df.columns = [str(name).lower().replace(" ", "_") for name in df.columns]
-            dict_rows = df.to_dict(orient='records')
-            return RecordData(path, dict_rows)
-        if path.endswith('.tsv'):
-            df = pd.read_csv(path, sep='\t')
-            df.columns = [str(name).lower().replace(" ", "_") for name in df.columns]
-            dict_rows = df.to_dict(orient='records')
-            return RecordData(path, dict_rows)
-        if path.endswith('.xlsx'):
-            df = pd.read_excel(path)
-            df.columns = [str(name).lower().replace(" ", "_") for name in df.columns]
-            dict_rows = df.to_dict(orient='records')
-            return RecordData(path, dict_rows)
-        if path.endswith('.xls'):
-            df = pd.read_excel(path)
-            df.columns = [str(name).lower().replace(" ", "_") for name in df.columns]
-            dict_rows = df.to_dict(orient='records')
-            return RecordData(path, dict_rows)
-        df = pd.read_json(path, lines=True)
-        dict_rows = df.to_dict(orient='records')
-        return RecordData(path, dict_rows)
-
-
-RecordDataLoader().register("record")
-
-def rename_path_as_jsonl(path):
-    if not os.path.exists(path):
-        return f"{basename(path)}.jsonl"
-    else:
-        return f"{basename(path, split_dir=False)}.jsonl"
-
-class RecordData(adhoc.AdhocObject):
-    def __init__(self, path: str, samplelist: List[dict]):
-        self.path = path
-        self.samplelist = samplelist
-        self.save_path = rename_path_as_jsonl(path)
-        self.save_mode = "w"
-
-    def samples(self, start=0, end=None):
-        return self.samplelist[start:end]
-
-    def get_sample(self, *keys):
-        sample = self.samplelist[0]
-        values = [sample.get(key, "") for key in keys]
-        return values[0] if len(keys) == 1 else values
-
-    def save(self, save_path=None):
-        save_path = save_path or self.save_path
-
-        if save_path:
-            safe_makedirs(save_path)
-            with open(save_path, mode=self.save_mode, encoding="utf-8") as w:
-                for result in self.samplelist:
-                    assert isinstance(result, dict)
-                    print(json.dumps(result, ensure_ascii=False), file=w)
-
-    def rename_save_path(self, **kwargs):
-        head = adhoc.get(kwargs, "test_run|head")
-        if head:
-            self.save_path = None
-            return head
-        output_path = adhoc.get(kwargs, "output_path")
-        if output_path:
-            self.save_path = os.path.join(output_path, basename(self.save_path, split_ext=False))
-            return None
-        output_file = adhoc.get(kwargs, "output_file")
-        if output_file:
-            if os.path.exists(output_file):
-                os.unlink(output_file)
-            self.save_path = output_file
-            self.save_mode="a"
-            return None
-        overwrite = adhoc.get(kwargs, "overwrite|=False")
-        if overwrite == False and output_file is None:
-            adhoc.print(
-                "To save a file, you need `output_file` or `overwrite=True`"
-                "//ファイル出力するには、output_fileかoverwrite=Trueを指定しよう"
-            )
-            self.save_path = None
-            return 5
-        return None
-
 
 

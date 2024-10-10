@@ -3,7 +3,7 @@ import math
 from collections import Counter
 
 from ..loads.commons import *
-from .metrics import Metric
+from .loads import Metric
 
 
 def levenshtein_similarity(candidate, reference):
@@ -13,10 +13,11 @@ def levenshtein_similarity(candidate, reference):
 
 
 class EditSim(Metric):
-    def __init__(self, path, kwargs):
-        super().__init__("editsim", kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = "editsim"
 
-    def eval_s(self, candidate: str, reference: str, sample=None):
+    def calc_s(self, candidate: str, reference: str) -> float:
         return levenshtein_similarity(candidate, reference)
 
 
@@ -40,12 +41,13 @@ def jaccard_similarity(candidate, reference, tokenize):
 
 
 class Jaccard(Metric):
-    def __init__(self, kwargs):
-        super().__init__("jaccard", kwargs)
-        self.get(kwargs, "tokenizer_path|tokenizer|=simple")
-        self.tokenize = adhoc.load("tokenizer", self.tokenizer_path)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = "jaccard"
+        tokenizer_path = self.get(kwargs, "_path|tokenizer_path|tokenizer|=simple")
+        self.tokenize = adhoc.load("tokenizer", tokenizer_path)
 
-    def eval_s(self, candidate, reference, sample=None):
+    def calc_s(self, candidate: str, reference: str) -> float:
         return jaccard_similarity(candidate, reference, tokenize=self.tokenize)
 
 
@@ -78,17 +80,18 @@ def cosine_similarity(candidate, reference, tokenize):
         return numerator / denominator
 
 
-class Cosine(Metric):
-    def __init__(self, kwargs):
-        super().__init__("cosine", kwargs)
-        self.get(kwargs, "tokenizer_path|tokenizer|=simple")
-        self.tokenize = adhoc.load("tokenizer", self.tokenizer_path)
+class CosineSim(Metric):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = "cosine"
+        tokenizer_path = self.get(kwargs, "_path|tokenizer_path|tokenizer|=simple")
+        self.tokenize = adhoc.load("tokenizer", tokenizer_path)
 
-    def eval_s(self, candidate, reference, sample=None):
+    def calc_s(self, candidate: str, reference: str) -> float:
         return cosine_similarity(candidate, reference, tokenize=self.tokenize)
 
 
-Jaccard.register("cosine")
+CosineSim.register("cosine")
 
 ## BLEU
 
@@ -149,13 +152,14 @@ def bleu_score(candidate: str, reference: str, n=4, tokenize=None):
 
 
 class BLEU(Metric):
-    def __init__(self, path, kwargs):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.n = kwargs.get("n", 4)
-        super().__init__(f"blue-{self.n}", **kwargs)
-        self.get(kwargs, "tokenizer_path|tokenizer|=simple")
-        self.tokenize = adhoc.load("tokenizer", self.tokenizer_path)
+        self.name = f"bleu-{self.n}"
+        tokenizer_path = self.get(kwargs, "_path|tokenizer_path|tokenizer|=simple")
+        self.tokenize = adhoc.load("tokenizer", tokenizer_path)
 
-    def eval_s(self, candidate, reference, sample=None):
+    def calc_s(self, candidate: str, reference: str) -> float:
         return bleu_score(candidate, reference, n=self.n, tokenize=self.tokenize)
 
 
@@ -204,12 +208,13 @@ def rouge_l(candidate, reference, tokenize):
 
 
 class ROUGE_L(Metric):
-    def __init__(self, path, kwargs):
-        super().__init__(f"ROUGE-L", kwargs)
-        self.get(kwargs, "tokenizer_path|tokenizer|=simple")
-        self.tokenize = adhoc.load("tokenizer", self.tokenizer_path)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = "ROUGE-L"
+        tokenizer_path = self.get(kwargs, "_subpath|tokenizer_path|tokenizer|=simple")
+        self.tokenize = adhoc.load("tokenizer", tokenizer_path)
 
-    def eval_s(self, candidate, reference, sample=None):
+    def calc_s(self, candidate: str, reference: str) -> float:
         return rouge_l(candidate, reference, tokenize=self.tokenize)
 
 
@@ -217,41 +222,34 @@ ROUGE_L.register("rouge_l")
 
 # BERTScore
 
-
 class BERTScore(Metric):
-    def __init__(self, path, kwargs):
-        path, _, model_path = path.partition(":")
-        if model_path == "":
-            model_path = self.get(kwargs, "model_type|model_path|model|!!")
+    def __init__(self, **kwargs):
         super().__init__("BERTScore", **kwargs)
-        self.model_path = model_path
-        try:
-            from bert_score import score
-        except ModuleNotFoundError:
-            adhoc.pip("bert_score")
-            from bert_score import score
-
-        self.bert_score = score
+        self.name = "BERTScore"
+        bert_score = adhoc.safe_import('bert_score')
+        self.bert_score = bert_score.score
+        self.model_path = adhoc.get(kwargs, "_subpath|model_type|model_path|model|!!")
         self.lang = kwargs.get("lang", "en")
 
-    def eval_s(self, candidate, reference, sample=None) -> float:
+    def calc_s(self, candidate: str, reference: str) -> float:
         P, R, F1 = self.bert_score(
             [candidate], [reference], lang=self.lang, model_type=self.model_path
         )
         return F1.mean().item()
 
-    def eval(self, candidate, reference):
-        candidates = listfy(candidate)
-        references = listfy(reference)
+    def calc(self, candidates, references, suffix=''):
+        candidates = listfy(candidates)
+        references = listfy(references)
         P, R, F1 = self.bert_score(
-            candidates, references, lang=self.lang, model_type=self.model_path
+            candidates, references, 
+            model_type=self.model_path,
+            lang=self.lang, 
         )
-        # return {
-        #     "precision": P.mean().item(),
-        #     "recall": R.mean().item(),
-        #     "f1": F1.mean().item()
-        # }
-        return F1.mean().item()
+        return {
+            f"{self.nametag}_F1{suffix}": list(F1),
+            f"{self.nametag}_Precision{suffix}": list(P),
+            f"{self.nametag}_Recall{suffix}": list(R),
+        }
 
 
 BERTScore.register("bertscore|bert_score")

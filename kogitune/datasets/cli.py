@@ -11,23 +11,6 @@ def train_bpe_cli(**kwargs):
         train_bpe(files, save_path, **kwargs)
 
 
-@adhoc.from_kwargs
-def word_list_from_kwargs(**kwargs):
-    words = adhoc.get_list(kwargs, "word_list|words|!!")
-    if len(words) == 1:
-        is_text_file = '.txt' in words[0]
-        path, args, tag = adhoc.parse_path(words[0], parent_args=kwargs)
-        record = adhoc.load('record', path, **args)
-        key = adhoc.get(args, 'word_key|key|=word')
-        words = []
-        for sample in record.samples():
-            text = adhoc.get_formatted_text(sample, key)
-            if is_text_file and text.startswith('#'):
-                continue
-            words.append(text)
-        return words
-    return words
-
 @adhoc.cli
 def add_vocab_cli(**kwargs):
     from .tokenizers_mte import make_mte

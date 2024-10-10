@@ -10,6 +10,7 @@ from .stack import (
     debug_print,
     notice,
     warn,
+    exit,
     function_called,
     report_ArgumentError,
     saved_on_stacked as saved,
@@ -25,6 +26,8 @@ from .stack import (
     get_list, 
     get_formatted_text,
     safe_kwargs,
+    parse_value,
+    parse_value_of_args,
 
     parse_path,
     kwargs_from_path,

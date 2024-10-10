@@ -2,117 +2,100 @@ from typing import List, Union
 import math
 import numpy as np
 import torch
-import torch.nn.functional as F
 
 from .commons import *
 from .files import basename
 
-LOADER_MODELMAP = {}
+MODEL_MAP = {}
 
 class ModelLoader(adhoc.AdhocLoader):
-    def load(self, path: str, tag, kwargs):
-        global LOADER_MODELMAP
-        tag = kwargs.get('modeltag', tag)
-        if tag == "":
-            tag = basename(path, split_ext=False)
-        if ":" in path:
-            scheme, _, model_path = path.partition(":")
-            if scheme in LOADER_MODELMAP:
-                return LOADER_MODELMAP[scheme](model_path, tag, kwargs)
-        if path.startswith("dummy"):
-            return Model(path, tag, kwargs)
-        else:
-            return HFModel(path, tag, kwargs)
 
-ModelLoader().register("model")
+    def add_kwargs(self, path, kwargs):
+        if '_tag' not in kwargs:
+            tag = basename(path, split_ext=False)
+            kwargs['_tag'] = kwargs.get('modeltag', tag)
+        return path, kwargs
+        
+    def load_default(self, path, kwargs):
+        if path.startswith("dummy"):
+            return Model(**kwargs)
+        else:
+            return HFModel(**kwargs)
+
+ModelLoader(MODEL_MAP).register("model")
 
 class Model(adhoc.AdhocObject):
-    def __init__(self, model_path, tag, kwargs):
+    def __init__(self, **kwargs):
         """
         Base class for abstracting a model.
         """
-        self.model_path = model_path
-        self.modeltag = tag
-        self.pathargs = {}
-        self.verbose_count = adhoc.get(kwargs, "verbose_count|head|=0")
-        self.gen_args = adhoc.safe_kwargs(kwargs, *self.generator_args())
+        super().__init__(**kwargs)
+        self.progress_bar = None
 
-    def __repr__(self) -> str:
-        return self.model_path
+    @property
+    def modeltag(self):
+        if self.tag != '':
+            return self.tag
+        return basename(self.path, split_ext=False)
 
-    def generator_args(self) -> List[str]:
+    def lazy_load(self):
+        """
+        遅延ロードに対応したモデル用のダミーメソッド
+        """
+        pass
+
+    # def start_progress_bar(self, total):
+    #     self.lazy_load()
+    #     self.progress_bar = adhoc.progress_bar(total=total, desc=f"{self.modeltag}")
+
+    # def end_progress_bar(self):
+    #     if self.progress_bar:
+    #         self.progress_bar.close()
+    #         self.progress_bar = None
+
+    def compute_loss(self, input_texts: Union[List[str],str], progress_bar=None) -> float:
+        raise NotImplementedError()
+ 
+    def supported_gen_args(self) -> List[str]:
         return []
 
-    def verbose_print(self, *args, **kwargs) -> None:
-        if self.verbose_count > 0:
-            adhoc.print(*args, **kwargs)
-            self.verbose_count -= 1
+    def safe_gen_args(self, **kwargs):
+        return adhoc.safe_kwargs(kwargs, self.supported_gen_args(), unsafe='GEN')
 
-    def verbose_sample(self, sample:dict) -> None:
-        if self.verbose_count > 0:
-            adhoc.print(adhoc.dump(sample), face='👀')
-            self.verbose_count -= 1
+    def generate(self, input_texts: Union[List[str],str], n=1, progress_bar=None, /, **kwargs) -> Union[List[str], str]:
+        output_texts = []
+        for input_text in listfy(input_texts):
+            output_texts.append(self.generate_s(input_text, n, **kwargs))
+            if progress_bar:
+                progress_bar.update(1)
+        return singlefy_if_single(output_texts)
 
-    def compute_loss(self, input_text) -> float:
-        return np.nan
-
-    def generate(self, input_text: str, n=1, **kwargs) -> Union[List[str], str]:
-        return "" if n == 1 else [""] * n
-
-    def eval_loss(self, sample_list: Union[List[dict], dict]):
-        for sample in list_tqdm(sample_list, desc=f"{self}"):
-            input_text = sample["input"]
-            sample["loss"] = self.compute_loss(input_text)
-            self.verbose_sample(sample)
-
-    def eval_choice(self, sample_list: Union[List[dict], dict]):
-        for sample in list_tqdm(sample_list, desc=f"{self}"):
-            input_list = sample["input"]
-            scores = [self.compute_loss(input_text) for input_text in input_list]
-            sample["scores"] = scores
-            sample["loss"] = min(scores)
-            predicted_idx = scores.index(min(scores))
-            sample["input"] = input_list[predicted_idx]
-            sample["output"] = sample["choice"][predicted_idx]
-            self.verbose_sample(sample)
-
-    def eval_gen(self, sample_list: Union[List[dict], dict], n=1, **kwargs):
-        for sample in list_tqdm(sample_list, desc=f"{self}"):
-            input_text = sample["input"]
-            sample["output"] = self.generate(input_text, n=n, **kwargs)
-            self.verbose_sample(sample)
-
-    def eval(self, sample_list: Union[List[dict], dict], eval_type=None, n=1, **kwargs):
-        if eval_type == "choice":
-            self.eval_choice(sample_list)
-        elif eval_type == "loss":
-            self.eval_loss(sample_list)
-        else:
-            self.eval_gen(sample_list, n=n, **kwargs)
+    def generate_s(self, input_text: str, n=1, /, **kwargs):
+        return singlefy_if_single([f"({input_text})"] * n)
 
     @classmethod
     def regiser(cls, scheme):
-        global LOADER_MODELMAP
-        LOADER_MODELMAP[scheme] = cls
+        global MODEL_MAP
+        MODEL_MAP[scheme] = cls
 
 ###
 # OpenAI
 
 class OpenAIModel(Model):
-    def __init__(self, model_path, tag, kwargs):
-        super().__init__(model_path, tag, kwargs)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         openai = adhoc.safe_import('openai')
-        api_key = self.get(kwargs, "_openai_api_key|api_key|!!")
+        api_key = adhoc.get(kwargs, "openai_api_key|api_key|!!")
         self.client = openai.OpenAI(api_key=api_key)
 
-    def generator_args(self) -> List[str]:
+    def supported_gen_args(self) -> List[str]:
         return [
             ## https://platform.openai.com/docs/api-reference/chat/create
             "frequency_penalty",
             "logit_bias",
             "logprobs",
             "top_logprobs",
-            "max_tokens",
+            "max_tokens|max_new_tokens",
             "presence_penalty",
             "response_format",
             "seed",
@@ -123,24 +106,26 @@ class OpenAIModel(Model):
             "top_p",
         ]
 
-    def generate(self, input_text: str, n=1, **kwargs):
-        if "max_new_tokens" in self.gen_args:
+    def generate(self, input_texts: Union[List[str], str], n=1, progress_bar=None, /, **kwargs):
+        gen_args = adhoc.parse_value_of_args(**kwargs)
+        if "max_new_tokens" in gen_args:
             # すごくアドホックな解決策
-            self.gen_args["max_tokens"] = self.gen_args.pop("max_new_tokens")
+            gen_args["max_tokens"] = gen_args.pop("max_new_tokens")
         if "num_return_sequences" in self.gen_args:
-            self.gen_args.pop("num_return_sequences")
+            gen_args.pop("num_return_sequences")
+        return super().generate(input_texts, n, progress_bar, **gen_args)
+
+    def generate_s(self, input_text: str, n=1, /, **gen_args):
         response = self.client.chat.completions.create(
             model=self.model_path,
             messages=[{"role": "user", "content": input_text}],
             n=n,
-            **self.gen_args | kwargs,
+            **gen_args,
         )
         responses = [choice.message.content for choice in response.choices]
-        return responses[0] if n == 1 else responses
-
+        return singlefy_if_single(responses)
 
 OpenAIModel.regiser("openai")
-
 
 # class BedrockModel(Model):
 #     def __init__(self, model_path, kwargs):
@@ -204,7 +189,7 @@ model32_kw_list = [
 def load_hfmodel32(model_path, /, **kwargs):
     from transformers import AutoModelForCausalLM
 
-    model_args = adhoc.safe_kwargs(kwargs, *model32_kw_list)
+    model_args = adhoc.safe_kwargs(kwargs, model32_kw_list)
     adhoc.verbose_print('Loading the model//モデルロード', 
                         model_path, model_args, once=model_path)
     try:
@@ -229,7 +214,7 @@ def load_hfmodel4bit(model_path, /, **kwargs):
     try:
         from transformers import BitsAndBytesConfig, AutoModelForCausalLM
 
-        model_args = adhoc.safe_kwargs(kwargs, *model4bit_kw_list)
+        model_args = adhoc.safe_kwargs(kwargs, model4bit_kw_list)
 
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
@@ -242,9 +227,9 @@ def load_hfmodel4bit(model_path, /, **kwargs):
             model_path, quantization_config=bnb_config, **model_args
         )
         return model, model_args
-    except BaseException:
+    except BaseException as e:
         adhoc.print(
-            f"Unable to load 4Bit Quantimization Model///4ビット量子化モデルがロードできません"
+            f"Unable to load 4Bit Quantimization Model///4ビット量子化モデルがロードできません", str(e)
         )
         adhoc.print("Trying a normal model...///とりあえず、ノーマルモデルを試します")
     return load_hfmodel32(model_path, **kwargs)
@@ -268,7 +253,8 @@ def load_hfmodel(model_path, /, **kwargs):
     else:
         return load_hfmodel32(model_path, **kwargs)
 
-def to_dtype(dtype):
+@adhoc.parse_value
+def parse_dtype(dtype):
     dtype_mapping = {
         "float": torch.float,
         "float32": torch.float32,
@@ -318,43 +304,75 @@ def hfmodel_from_kwargs(**kwargs):
 ## https://github.com/huggingface/transformers/issues/22387
 
 
-def data_stream(sample_list: List[str], desc=None):
-    for sample in adhoc.tqdm(sample_list, desc=desc):
-        yield sample["input"]
+def text_stream(texts: List[str], progress_bar=None):
+    if len(texts) == 1:
+        if progress_bar:
+            progress_bar.update(1)
+        yield texts[0]
+    else:
+        for text in texts:
+            if progress_bar:
+                progress_bar.update(1)
+            yield text
 
 
 class HFModel(Model):
-    def __init__(self, model_path, tag, kwargs):
-        transformers = adhoc.safe_import('transformers')
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.lazy_kwargs = {**kwargs}
+        self.progress_bar = None
+        if not kwargs.get('_lazy', False):
+            self.lazy_load()
 
-        super().__init__(model_path, tag, kwargs)
-        tokenizer_path = adhoc.get(kwargs, f'tokenizer_path|model_path|={model_path}')
-        self.tokenizer = adhoc.load('_tokenizer', tokenizer_path, **kwargs)
+    def lazy_load(self):
+        if self.lazy_kwargs is None:
+            return
+        transformers = adhoc.safe_import('transformers')
+        kwargs = self.lazy_kwargs
+        self.lazy_kwargs = None
+
+        tokenizer_path = adhoc.get(kwargs, f'tokenizer_path|_subpath|model_path|={self.path}')
+        self._tokenizer = adhoc.load('_tokenizer', tokenizer_path, **kwargs)
 
         # なぜか必要らしい（↓）
         self.tokenizer.pad_token = self.tokenizer.eos_token
         # if 'max_length' in kwargs:
         #     self.tokenizer.trancation = True
-        self.model, self.pathargs = load_hfmodel(model_path, **kwargs)
-        self.device = next(self.model.parameters()).device
+        model_path = adhoc.get(kwargs, f'_subpath|model_path|={self.path}')
+        self._model, self.pathargs = load_hfmodel(model_path, **kwargs)
+        self.device = next(self._model.parameters()).device
         adhoc.verbose_print(f"Model has loaded on {self.device}.///モデルは{self.device}上にロードされました")
         hf_token = adhoc.get(kwargs, "use_auth_token|HF_TOKEN")
         self.generator = transformers.pipeline(
             "text-generation",
-            model=self.model,
-            tokenizer=self.tokenizer,
+            model=self._model,
+            tokenizer=self._tokenizer,
             use_auth_token=hf_token,
         )
-        if "max_length" in self.gen_args and "max_new_tokens" in self.gen_args:
-            del self.gen_args["max_length"]
         # if 'max_length' in gen_args:
         #     gen_args['trancation'] = True
-        if "return_full_text" not in self.gen_args:
-            self.gen_args["return_full_text"] = False
+        # if "return_full_text" not in self.gen_args:
+        #     self.gen_args["return_full_text"] = False
         # if "pad_token_id" not in self.gen_args:
         #     self.gen_args["pad_token_id"] = self.tokenizer.eos_token_id
 
-    def generator_args(self) -> List[str]:
+    @property
+    def modeltag(self):
+        if self.tag != '':
+            return self.tag
+        return basename(self.path, split_ext=False)
+
+    @property
+    def model(self):
+        self.lazy_load()
+        return self._model
+
+    @property
+    def tokenizer(self):
+        self.lazy_load()
+        return self._tokenizer
+
+    def supported_gen_args(self) -> List[str]:
         return [
             ## 4.39.0 https://huggingface.co/docs/transformers/main_classes/text_generation
             "max_length",  # (int, optional, defaults to 20) — The maximum length the generated tokens can have.
@@ -394,144 +412,78 @@ class HFModel(Model):
         ]
 
     def unwrap(self):
-        return self.model
+        self.lazy_load()
+        return self._model
 
-    def generate(self, input_text: str, n=1, **kwargs) -> Union[List[str], str]:
-        model_inputs = self.tokenizer([input_text], return_tensors="pt").to(self.model.device)
-        gen_args = self.gen_args | kwargs
-        if 'max_new_tokens' not in gen_args:
-            gen_args['max_new_tokens'] = 256
-        generated_ids = self.model.generate(
-            **model_inputs, **gen_args
-        )
-        generated_ids = [
-            output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
-        ]
-        response = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
-        response = response.strip()
-        return response
-
-
-    def compute_loss(self, input_text: str) -> float:
-        inputs = self.tokenizer(input_text, return_tensors="pt")
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
-        labels = inputs["input_ids"].clone()
-        # 不要なキーを除去
-        inputs.pop("token_type_ids", None)
-        with torch.no_grad():
-            outputs = self.model(**inputs, labels=labels)
-            loss = outputs.loss
-        return loss.item()
-
-    # def eval_loss(self, sample_list: Union[List[dict], dict]):
-    #     for sample in list_tqdm(sample_list, desc=f"{self}"):
-    #         input_text = sample["input"]
-    #         input_ids = torch.tensor(self.tokenizer.encode(input_text)).unsqueeze(0)
-    #         input_ids = input_ids.to(self.model.device)
-    #         # inputs = self.tokenizer(input_text, return_tensors="pt")
-    #         # inputs = {k: v.to(self.device) for k, v in inputs.items()}
-    #         # labels = inputs["input_ids"].clone()
-    #         # 不要なキーを除去
-    #         # inputs.pop("token_type_ids", None)
-    #         with torch.no_grad():
-    #             outputs = self.model(input_ids, labels=input_ids)
-    #             # outputs = self.model(**inputs, labels=labels)
-    #             loss, logits = outputs[:2]
-    #         sample["loss"] = loss.item()  # log-likelihood
-    #         # mink and mink++
-    #         input_ids = input_ids[0][1:].unsqueeze(-1)
-    #         probs = F.softmax(logits[0, :-1], dim=-1)
-    #         log_probs = F.log_softmax(logits[0, :-1], dim=-1)
-    #         token_log_probs = log_probs.gather(dim=-1, index=input_ids).squeeze(-1)
-    #         mu = (probs * log_probs).sum(-1)
-    #         sigma = (probs * torch.square(log_probs)).sum(-1) - torch.square(mu)
-    #         ## mink
-    #         scores = {}
-    #         for k in range(10, 101, 10):
-    #             k_length = int(len(token_log_probs) * k // 100)
-    #             topk = np.sort(token_log_probs.cpu())[:k_length]
-    #             scores[k] = -np.mean(topk).item()
-    #         sample["mink_prob"] = scores
-    #         ## mink++
-    #         scores = {}
-    #         mink_plus = (token_log_probs - mu) / sigma.sqrt()
-    #         for k in range(10, 101, 10):
-    #             k_length = int(len(mink_plus) * k // 100)
-    #             topk = np.sort(mink_plus.cpu())[:k_length]
-    #             scores[k] = -np.mean(topk).item()
-    #         sample["mink_plus"] = scores
-    #         self.verbose(sample)
-
-    # def compute_next_token_prob(self, input_text: str, token_ids=None):
-    #     inputs = self.tokenizer(input_text, return_tensors="pt")
-    #     inputs = {k: v.to(self.device) for k, v in inputs.items()}
-    #     with torch.no_grad():
-    #         outputs = self.model(inputs)
-    #         logits = outputs.logits
-
-    #     # 次のトークンの確率を計算
-    #     next_token_logits = logits[:, -1, :]
-    #     probs = F.softmax(next_token_logits, dim=-1)
-
-    #     # yes_token_id = self.tokenizer.encode('yes')[0]
-    #     # "yes" の予測確率を取得
-    #     # yes_prob = probs[0, yes_token_id].item()
-    #     if token_ids is None:
-    #         return [
-    #             probs[0, token_id].item()
-    #             for token_id in range(self.tokenizer.vocab_size)
-    #         ]
-    #     else:
-    #         return [probs[0, token_id].item() for token_id in token_ids]
-
-    def eval_gen(self, sample_list: Union[List[dict], dict], n=1, **kwargs) -> List[str]:
-        args = self.gen_args | dict(
-            num_return_sequences=n,
-        )
-        sample_list = listfy(sample_list)
-        outputs = self.generator(data_stream(sample_list, desc=f"{self}"), **args)
-        for i, results in enumerate(outputs):
-            sample = sample_list[i]
-            sample["output"] = [item["generated_text"] for item in results]
-            if len(sample["output"]) == 1:
-                sample["output"] = sample["output"][0]
-            self.verbose_sample(sample)
+    def generate(self, input_texts: Union[List[str],str], n=1, progress_bar=None, /, **kwargs) -> Union[List[str], str]:
+        self.lazy_load()
+        gen_args = adhoc.parse_value_of_args(kwargs)
+        gen_args['num_return_sequences'] = n
+        if "return_full_text" not in gen_args:
+            gen_args["return_full_text"] = False
+        if "max_length" in gen_args and "max_new_tokens" in gen_args:
+            gen_args.pop("max_length")
+        gen_args.pop('n', None)
+        gen_args.pop('progress_bar', None)
+        input_texts = listfy(input_texts)
+        outputs = self.generator(text_stream(input_texts, progress_bar), **gen_args)
+        output_texts = []
+        for results in outputs:
+            generated_texts = [item["generated_text"] for item in results]
+            output_texts.append(singlefy_if_single(generated_texts))
+        return singlefy_if_single(output_texts)
+        
+    def compute_loss(self, input_texts: Union[List[str],str], progress_bar=None) -> Union[List[float], float]:
+        self.lazy_load()
+        values = []
+        for input_text in listfy(input_texts):
+            inputs = self._tokenizer(input_text, return_tensors="pt")
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+            labels = inputs["input_ids"].clone()
+            # 不要なキーを除去
+            inputs.pop("token_type_ids", None)
+            with torch.no_grad():
+                outputs = self._model(**inputs, labels=labels)
+                loss = outputs.loss
+            values.append(loss.item())
+            if progress_bar:
+                progress_bar.update(1)
+        return singlefy_if_single(values)
 
 HFModel.regiser("hf")
 
+# class vLLMModel(Model):
+#     def __init__(self, model_path, kwargs):
+#         from vllm import LLM, SamplingParams
 
-class vLLMModel(Model):
-    def __init__(self, model_path, kwargs):
-        from vllm import LLM, SamplingParams
+#         super().__init__(model_path, kwargs)
+#         self.llm = LLM(model=model_path)
+#         self.SamplingParams = SamplingParams
+#         self.gen_args = {}
 
-        super().__init__(model_path, kwargs)
-        self.llm = LLM(model=model_path)
-        self.SamplingParams = SamplingParams
-        self.gen_args = {}
+#     def eval_loss(self, sample_list: Union[List[dict], dict]):
+#         sampling_params = self.SamplingParams(**self.gen_args)
+#         sample_list = listfy(sample_list)
+#         prompts = [sample["input"] for sample in sample_list]
+#         outputs = self.llm.generate(prompts, sampling_params)
+#         for i, output in enumerate(outputs):
+#             sample = sample_list[i]
+#             sample["loss"] = math.log(output.outputs[0].perplexity)
 
-    def eval_loss(self, sample_list: Union[List[dict], dict]):
-        sampling_params = self.SamplingParams(**self.gen_args)
-        sample_list = listfy(sample_list)
-        prompts = [sample["input"] for sample in sample_list]
-        outputs = self.llm.generate(prompts, sampling_params)
-        for i, output in enumerate(outputs):
-            sample = sample_list[i]
-            sample["loss"] = math.log(output.outputs[0].perplexity)
-
-    def eval_gen(
-        self, sample_list: Union[List[dict], dict], n=1, **kwargs
-    ) -> List[str]:
-        args = self.gen_args | dict(
-            n=n,
-        )
-        sampling_params = self.SamplingParams(**args)
-        sample_list = listfy(sample_list)
-        prompts = [sample["input"] for sample in sample_list]
-        outputs = self.llm.generate(prompts, sampling_params)
-        for i, output in enumerate(outputs):
-            sample = sample_list[i]
-            sample["output"] = [item.text for item in output.outputs]
-            if n == 1:
-                sample["output"] = sample["output"][0]
+#     def eval_gen(
+#         self, sample_list: Union[List[dict], dict], n=1, **kwargs
+#     ) -> List[str]:
+#         args = self.gen_args | dict(
+#             n=n,
+#         )
+#         sampling_params = self.SamplingParams(**args)
+#         sample_list = listfy(sample_list)
+#         prompts = [sample["input"] for sample in sample_list]
+#         outputs = self.llm.generate(prompts, sampling_params)
+#         for i, output in enumerate(outputs):
+#             sample = sample_list[i]
+#             sample["output"] = [item.text for item in output.outputs]
+#             if n == 1:
+#                 sample["output"] = sample["output"][0]
 
 

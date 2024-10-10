@@ -18,12 +18,11 @@ except ModuleNotFoundError:
 ARGS_STACK = []
 
 class ChainMap(object):
-    def __init__(self, kwargs: dict, parent = None, 
-                 caller = None, errors='ignore', open_file = None):
+    def __init__(self, kwargs: dict, parent = None, caller = None, open_file = None):
         self.local_kwargs = {} if kwargs is None else kwargs
         self.parent = parent
         self.caller = caller
-        self.errors = errors
+        self.errors = kwargs.get('_errors')
         self.used_keys = []
         self.saved_files = []
         if open_file is not None:
@@ -132,12 +131,12 @@ class ChainMap(object):
         if len(unused_keys) > 0:
             # if self.errors == "ignore":
             #     return
-            if self.errors == "strict":
-                raise TypeError(f"{key} is an unused keyword at {self.caller}")
             adhoc_print(f"List of unused arguments//未使用の引数があるよ！スペルミスない？", self.caller)
             for key in unused_keys:
                 value = self[key]
                 adhoc_print(f"  {key} = {repr(value)}", face='')
+            if self.errors == "strict":
+                raise TypeError(f"{unused_keys} is an unused keyword at {self.caller}")
 
     def saved(self, filepath: str, desc:str='', rename_from=None):
         if rename_from and os.path.exists(rename_from):
@@ -155,6 +154,16 @@ class ChainMap(object):
             adhoc_print(colored(filepath.ljust(width), "blue"), desc)
 
 ## stacked
+
+PARSE_MAP = {}
+
+# 関数をグローバル辞書に登録するデコレータ
+def parse_value(func):
+    global FROM_KWARGS_MAP
+    name = func.__name__.replace('parse_', '')
+    PARSE_MAP[name] = func
+    return func
+
 
 def load_yaml(config_file):
     import yaml
@@ -222,7 +231,9 @@ def get_os_environ():
             env[key] = parse_key_value(key, os.environ[key])
     return env
 
+
 ARGS_STACK.append(ChainMap(get_os_environ()))
+
 
 def get_stacked(key:Optional[str]=None, default_value=None):
     stack = ARGS_STACK[-1]
@@ -239,12 +250,12 @@ def saved_on_stacked(filepath: str, desc:str='', rename_from=None):
     ARGS_STACK[-1].saved(filepath, desc, rename_from=rename_from)
 
 
-def kwargs_from_stacked(caller_frame=None, errors = 'ignore', open_file=None, /, **kwargs) -> ChainMap:
+def kwargs_from_stacked(caller_frame=None, /, **kwargs) -> ChainMap:
     stacked = get_stacked()
     if caller_frame is None:
         caller_frame = inspect.stack()[1].function
     kwargs.pop('open_file', None) # 余分なキーを消す
-    return ChainMap(kwargs, parent=stacked, caller=caller_frame, errors=errors)
+    return ChainMap(kwargs, parent=stacked, caller=caller_frame)
 
 
 ### print
@@ -327,7 +338,7 @@ def verbose_print(*args, **kwargs):
         adhoc_print(*args, **kwargs)
 
 def is_debug():
-    return get_stacked('debug', True)
+    return get_stacked('_debug', True)
 
 
 def debug_print(*args, **kwargs):
@@ -356,15 +367,19 @@ def function_called(name, *args, **kwargs):
     strargs = ','.join(strargs)
     return f"{name}({strargs})"
 
-def report_ArgumentError(message, throw, called):
-#    adhoc_print(f"An error has occured.///エラーが発生しました", repr(throw))
-    adhoc_print(message, repr(throw))
-    adhoc_print("Your parameter could be wrong.///あなたのパラメータ指定が間違っている可能性が高いです。", repr(throw))
-    adhoc_print(called)
+def exit(throw: Exception):
     if is_debug():
         raise throw
-    adhoc_print("If you want to know the detail///エラーの詳細を知りたい場合は", "`debug=True`")
+    adhoc_print("If you want to know the detail///エラーの詳細を知りたい場合は", "`_debug=True`")
     sys.exit(1)
+
+
+def report_ArgumentError(message, throw, called):
+#    adhoc_print(f"An error has occured.///エラーが発生しました", repr(throw))
+    adhoc_print(message, colored(str(throw), 'red'))
+    adhoc_print("Your parameter could be wrong.///あなたのパラメータ指定が間違っている可能性が高いです。")
+    adhoc_print(called, face=' ', color='blue')
+    exit(throw=throw)
 
 ## Adhoc Keys
 
@@ -432,22 +447,31 @@ def rec_value(dic: dict, value, recursive=1, type_fn = identity):
         return identity(value)
     return identity(value)
 
+def get_default_key(keys: List[str]):
+    for key in keys:
+        if not key.startswith('_'):
+            return key
+    return keys[0]
+
 def get_adhoc(dic: dict, 
-                       adhoc_key: str, 
-                       default_value=None, 
-                       recursive=3, 
-                       return_keys = True, 
-                       type_fn=identity):
+                adhoc_key: str, 
+                default_value=None, 
+                recursive=3, 
+                return_keys = True, 
+                type_fn=identity):
     keys = list_keys(adhoc_key)
-    default_key = keys[0]
+    default_key = get_default_key(keys)
     for key in keys:
         matched_key = None
         if key.startswith("!!"):
-            print('@', adhoc_key)
+            if '_path' in dic:
+                path = dic['_path']
+                adhoc_print(f"{path}には、`{default_key}=...`が必要です")
+                exit(throw=KeyError(default_key))
             raise KeyError(default_key)
         if key.startswith("="):
             value = parse_key_value(default_key, key[1:])
-            if dic.get('verbose', True) or dic.get('use_panda', False):
+            if dic.get('verbose', 0) or dic.get('use_panda', True):
                 adhoc_print(f"{default_key}={repr(value)}", face=' 🐼', once=True)
         elif key.startswith("!"):
             value = parse_key_value(default_key, key[1:])
@@ -475,8 +499,7 @@ def get_adhoc(dic: dict,
         return (value, matched_key, default_key) if return_keys else value
     return (default_value, None, default_key) if return_keys else default_value
 
-
-def record(kwargs: dict, *adhoc_keys: str, record_to=None, record_dic=None):
+def OLDrecord(kwargs: dict, *adhoc_keys: str, record_to=None, record_dic=None):
     values = []
     for adhoc_key in adhoc_keys:
         recordable = True
@@ -488,8 +511,17 @@ def record(kwargs: dict, *adhoc_keys: str, record_to=None, record_dic=None):
         if recordable and isinstance(record_dic, dict) and matched_key is not None:
             record_dic[default_key] = value
         if record_to is not None:
-            if default_key.endswith('_path') and hasattr(record_to, "subpath") and record_to.subpath == "":
-                default_key = "subpath"
+            setattr(record_to, default_key, value)
+    return values[0] if len(values) == 1 else values
+
+def record(kwargs: dict, *adhoc_keys: str, record_to=None, record_dic=None):
+    values = []
+    for adhoc_key in adhoc_keys:
+        value, matched_key, default_key = get_adhoc(kwargs, adhoc_key)
+        values.append(value)
+        if isinstance(record_dic, dict) and matched_key is not None:
+            record_dic[default_key] = value
+        if record_to is not None:
             setattr(record_to, default_key, value)
     return values[0] if len(values) == 1 else values
 
@@ -537,22 +569,35 @@ def extract_dict_with_prefix(dic: dict, prefix: str):
                 extracted[subkey] = dic[key]
     return extracted
 
-
-def safe_kwargs(kwargs: dict, prefix=None, /, *adhoc_keys):
+def safe_kwargs(kwargs: dict, adhoc_keys:List[str], prefix=None, unsafe=None):
     extracted = {}
     for keys in adhoc_keys:
         keys = list_keys(keys)
         for key in keys:
             if key in kwargs:
-                extracted[keys[0]] = kwargs[key]
+                extracted[get_default_key(keys)] = kwargs[key]
                 break
     if prefix:
         kwargs_sub = extract_dict_with_prefix(kwargs, prefix)
         extracted = extracted | kwargs_sub
+    if unsafe:
+        for key, value in kwargs.items():
+            if key.startswith(unsafe):
+                key = key[len(unsafe)+1:]
+                # adhoc_print()
+                extracted[key] = value
     for key in extracted.keys():
         use_stacked_key(key)
     return extracted
 
+def parse_value_of_args(kwargs: dict):
+    for key in list(kwargs.keys()):
+        if '__' in key:
+            value = kwargs.pop(key)
+            newkey, _, as_type = key.rpartition('__')
+            parse_fn = load('parse_value', as_type)
+            kwargs[newkey] = parse_fn(value)
+    return kwargs
 
 ## Adhoc formatting 
 
@@ -636,7 +681,7 @@ def kwargs_from_main(use_subcommand=False, expand_config="config", /, **kwargs):
 
 ## kwargs
 
-def parse_path(path: str, parent_args={}):
+def parse_path(path: str, parent_args:dict={}):
     if 0 < path.find("#") < path.find("?"):
         path, _, query = path.partition("?")
         if query != "":
@@ -658,12 +703,12 @@ def parse_path(path: str, parent_args={}):
             path = f"{parsed_url.scheme}:{parsed_url.path}"
     else:
         path = f"{parsed_url.path}"
-    return path, parent_args | args, parsed_url.fragment
+    return path, (parent_args | args), parsed_url.fragment
 
 
-def kwargs_from_path(path: str, errors='ignore', /, **kwargs):
+def kwargs_from_path(path: str,  /, **kwargs):
     _path, kwargs, _tag = parse_path(path, kwargs)
-    kwargs = kwargs_from_stacked(path, errors, **kwargs)
+    kwargs = kwargs_from_stacked(path, **kwargs)
     kwargs['_path'] = _path
     kwargs['_tag'] = _tag
     return kwargs
@@ -674,88 +719,101 @@ def encode_path(path: str, tag: str, kwargs: dict):
     return f"{path}{query}{fragment}"
 
 
-## Loader
-
 ## Load
 
 LOADER_SCHEME = {}
 
-
 class AdhocObject(object):
+
+    def __init__(self, **kwargs):
+        self.path = kwargs.get('_path', '')
+        self.tag = kwargs.pop('_tag', '')
 
     def unwrap(self):
         return None
 
-    def encode_path(self):
-        if hasattr(self, "subpath") and self.subpath != "":
-            path = f"{self.scheme}:{self.path}:{self.subpath}"
-        else:
-            path = f"{self.scheme}:{self.path}"
+    @property
+    def upath(self):
+        path = self.name if hasattr(self, "name") else self.path
         pathargs = self.pathargs if hasattr(self, "pathargs") else None
         return encode_path(path, self.tag, pathargs)
 
     def __repr__(self):
-        return self.encode_path()
-
-    def _loaded(self, scheme, path, tag):
-        if not hasattr(self, "scheme"):
-            self.scheme = scheme
-        if not hasattr(self, "path"):
-            path, _, subpath = path.partition(":")
-            self.path = path
-            if not hasattr(self, "subpath") and subpath != "":
-                self.subpath = subpath
-        if not hasattr(self, "tag"):
-            self.tag = tag
+        return self.name if hasattr(self, "name") else self.path
 
     def get(self, kwargs: dict, *adhoc_keys: str):
         pathargs = self.pathargs if hasattr(self, "pathargs") else None
         return record(kwargs, *adhoc_keys, record_to=self, record_dic=pathargs)
 
 
-class AdhocLoader(object):
-
-    def load(self, path: str, tag: str, kwargs):
-        return AdhocObject()
-
-    def register(self, scheme: str):
-        global LOADER_SCHEME
-        LOADER_SCHEME[scheme] = self
-
-    def _load(self, path: str, kwargs: dict, tag: str):
-        return self.load(path, tag, kwargs)
-
-    def global_keys(self):
-        return []
-
-
-# def typecheck(obj, structual_type):
-#     if isinstance(structual_type, str):
-#         for key in list_keys(structual_type):
-#             if not hasattr(obj, key):
-#                 return False
-#         return True
-#     return isinstance(obj, structual_type)
-
-
-def load(scheme: str, path: str = None, use_unwrap=False, /, **kwargs):
+def load(scheme: str, path: str = None, /, **kwargs):
     global LOADER_SCHEME
+    use_unwrap = kwargs.pop('use_unwrap', False)
     if path is None:
         scheme, _, path = scheme.partition(":")
     if scheme.startswith('_'):
         scheme = scheme[1:]
         use_unwrap = True
-    with kwargs_from_path(path, **kwargs) as kwargs:
-        path = kwargs.pop('_path')
-        tag = kwargs.pop('_tag')
-        if scheme in LOADER_SCHEME:
-            obj = LOADER_SCHEME[scheme]._load(path, kwargs, tag)
-            if isinstance(obj, AdhocObject):
-                obj._loaded(scheme, path, tag)
-            if use_unwrap:
-                return obj.unwrap()
-            return obj
-        raise KeyError(scheme)
+    kwargs.pop('use_unwrap', None)
+    if scheme in LOADER_SCHEME:
+        obj = LOADER_SCHEME[scheme].load_from_path(path, kwargs)
+        if use_unwrap:
+            return obj.unwrap()
+        return obj
+    raise KeyError(scheme)
+
+
+class AdhocLoader(object):
+
+    def __init__(self, MAP: dict):
+        self.MAP = MAP
+
+    def load_from_path(self, path: str, /, kwargs):
+        with kwargs_from_path(path, **kwargs) as kwargs:
+            path, kwargs = self.add_kwargs(path, kwargs)
+            return self.load_from_map(path, kwargs)
+
+    def add_kwargs(self, path, kwargs):
+        return path, kwargs
+
+    def load_modules(self, path, kwargs):
+        pass
+
+    def parse_loader_path(self, path, kwargs):
+        loader_path = path
+        if ':' in path:
+            loader_path, _, subpath = path.partition(':')
+            kwargs['_subpath'] = subpath
+        return self.lower(loader_path)
+    
+    def lower(self, loader_path):
+        return loader_path.lower().replace('_', '').replace('-', '')
+
+    def load_from_map(self, path, kwargs):
+        loader_path = self.parse_loader_path(path, kwargs)
+        if loader_path not in self.MAP:
+            self.load_modules(path, kwargs)
+        if loader_path in self.MAP:
+            return self.MAP[loader_path](**kwargs)
+        return self.load_default(path, kwargs)
+
+    def parse_k_from_path(self, path, kwargs, k_string='k'):
+        # 正規表現でmin後の数値をキャプチャ
+        match = re.findall(r'\D*(\d+)\D*', path)
+        if match:
+            path = path.replace(match[0], k_string)
+            kwargs[k_string] = int(match[0])
+            return path
+        return path
+
+    def load_default(self, path, kwargs):
+        debug_print(self.MAP)
+        raise KeyError(path)
+
+    def register(self, scheme: str):
+        global LOADER_SCHEME
+        for key in scheme.split('|'):
+            LOADER_SCHEME[key] = self
 
 
 CLI_MAP = {}
@@ -764,23 +822,22 @@ CLI_MAP = {}
 
 def cli(func):
     global CLI_MAP
-    name = func.__name__.replace('_cli', '').replace('_', '')
+    name = func.__name__.replace('_cli', '')
     CLI_MAP[name] = func
+    name = name.lower().replace('_', '')
+    if name not in CLI_MAP:
+        CLI_MAP[name] = func
     return func
 
 
 class CLIExecutor(AdhocLoader):
 
-    def load(self, path, tag, kwargs):
+    def load_modules(self, path, kwargs):
         import kogitune.cli
+        # return super().load_modules(kwargs)
 
-        global CLI_MAP
-        key = path.replace('_', '')
-        if key in CLI_MAP:
-            return CLI_MAP[key](**kwargs)
-        raise KeyError(path)
 
-CLIExecutor().register("cli")
+CLIExecutor(CLI_MAP).register("cli")
 
 FROM_KWARGS_MAP = {}
 
@@ -789,16 +846,13 @@ def from_kwargs(func):
     global FROM_KWARGS_MAP
     name = func.__name__.replace('_from_kwargs', '')
     FROM_KWARGS_MAP[name] = func
+    name = name.lower().replace('_', '')
+    if name not in CLI_MAP:
+        FROM_KWARGS_MAP[name] = func
     return func
 
-class FuncFromKwargsLoader(AdhocLoader):
+class FuncionLoader(AdhocLoader):
+    pass
 
-    def load(self, path, tag, kwargs):
-        global FROM_KWARGS_MAP
-        path = path.lower()
-        if path in FROM_KWARGS_MAP:
-            return FROM_KWARGS_MAP[path](**kwargs)
-        raise KeyError(path)
-
-FuncFromKwargsLoader().register("from_kwargs")
-
+FuncionLoader(FROM_KWARGS_MAP).register("from_kwargs")
+FuncionLoader(PARSE_MAP).register("parse_value")

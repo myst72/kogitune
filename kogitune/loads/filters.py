@@ -7,11 +7,10 @@ FILTER_MAP = {}
 
 
 class TextFilter(adhoc.AdhocObject):
-    def __init__(self, name: str, subpath: str, kwargs):
-        self.path = name
-        self.subpath = subpath
-        self.target = self.get(kwargs, "target|=text")
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.pathargs = {}
+        self.target = self.get(kwargs, "target|text_key|=text")
 
     def filter(self, sample: dict) -> Optional[dict]:
         return sample
@@ -36,7 +35,7 @@ class TextFilter(adhoc.AdhocObject):
 
 class TextFilterLoader(adhoc.AdhocLoader):
 
-    def load(self, path, tag, kwargs):
+    def load_from_map(self, path, kwargs):
         global FILTER_MAP
         path, _, subpath = path.partition(":")
         if path.endswith(".json"):
@@ -57,11 +56,12 @@ class TextFilterLoader(adhoc.AdhocLoader):
             filter = MaxMinFilter(path, subpath, kwargs)
             return filter
         except KeyError:
-            pass
+            pass        
         raise KeyError(path)
 
 
-TextFilterLoader().register("filter")
+TextFilterLoader(FILTER_MAP).register("filter")
+
 
 @adhoc.from_kwargs
 def filter_from_kwargs(**kwargs):
@@ -128,17 +128,17 @@ class MaxMinFilter(TextFilter):
     評価関数の最大値と最小値からフィルターする
     """
 
-    def __init__(self, path, subpath, kwargs):
+    def __init__(self, **kwargs):
         """
         評価関数フィルタを作る
         """
-        super().__init__("maxmin", subpath, kwargs)
+        super().__init__(**kwargs)
         self.get(
             kwargs,
             "max_inclusive|max",
             "min_inclusive|min",
         )
-        self.texteval = adhoc.load("texteval", subpath, **kwargs)
+        self.texteval = adhoc.load("texteval", kwargs['_subpath'], **kwargs)
         self.record_key = self.texteval.path
 
     def filter(self, sample: dict) -> Optional[str]:

@@ -342,7 +342,7 @@ def store(kwargs):
 class TokenDataset(adhoc.AdhocObject):
 
     def __init__(self, base: str, chunkfiles: List[dict], **kwargs):
-        self.path = base
+        super().__init__(base, kwargs)
         total = 0
         files = []
         self.block_size = self.get(kwargs, "block_size|max_length|=512")
@@ -505,7 +505,7 @@ class TokenDataset(adhoc.AdhocObject):
 
 class StoreLoader(adhoc.AdhocLoader):
 
-    def load(self, path, tag, kwargs):
+    def load_from_map(self, path, kwargs):
         if ".json" in path:
             config = read_config(path, suffix=None)
             try:
@@ -522,7 +522,7 @@ class StoreLoader(adhoc.AdhocLoader):
             return TokenDataset(base, files, **kwargs)
 
 
-StoreLoader().register("chunk")
+StoreLoader({}).register("chunk")
 
 UNAME = {}
 

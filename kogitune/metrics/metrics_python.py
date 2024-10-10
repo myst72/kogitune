@@ -1,10 +1,11 @@
+from typing import List
 import os
 import ast
 import traceback
 import signal
 
 from ..loads.commons import *
-from .metrics import Metric
+from .loads import Metric
 
 ##
 # HumanEval
@@ -13,14 +14,67 @@ class PassAtK(Metric):
     """
     コード評価用Evaluatorクラス
     HuggingFaceのevaluate-metric/code_evalを使用してスコアを算出する。
+
+    m = kogitune.load('metric', "pass@1")
+    print(m)
+    candidates = [
+        ["def f(n): return 1", "def"],
+        ["def f(n): return 0", "def"],
+    ]
+    testcases = [
+        "assert f(0) == 1",
+        "assert f(0) == 1",
+    ]
+    m.calc(candidates, testcases)
     """
 
-    def __init__(self, path, kwargs):
-        evaluate = adhoc.safe_import("evaluate")
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.k = kwargs.get("k", 1)
-        super().__init__(f"pass@{self.k}", kwargs)
+        self.name =f"pass@{self.k}"
+        evaluate = adhoc.safe_import("evaluate")
         os.environ["HF_ALLOW_CODE_EVAL"] = "1"
         self.tool = evaluate.load("code_eval")  # code_eval
+        if self.k != 1:
+            adhoc.verbose_print('【注意】pass@1以外はまだテストされていません。')
+
+
+    def calc(self, candidates:List[str], testcases: List[str], suffix=''):
+        if len(candidates) > 0 and isinstance(candidates[0], str):
+            # 文字列のリストの場合は、リストの文字列にする
+            """
+            candidates = [
+                ["def f(n): return 1"],
+            ]
+            testcases = [
+                "assert f(0) == 1"
+            ]
+            """
+            candidates = [[e] for e in candidates]
+
+        pass_at_k, results = self.tool.compute(
+            references=testcases, predictions=candidates, k=[self.k]
+        )
+        adhoc.verbose_print('Quick results///速報値', pass_at_k)
+        #print('@@results', results)
+        scores = []
+        result_passed = []
+        result_messages = []
+        for i in range(len(candidates)):
+            n = len(results[i])
+            passed = []
+            messages = []
+            for d, result in results[i]:
+                passed.append(int(result['passed']))
+                messages.append(result['result'])    
+            scores.append((sum(passed)/n)*self.scale)
+            result_passed.append(singlefy_if_single(passed))
+            result_messages.append(singlefy_if_single(messages))
+        return {
+            f"{self.nametag}{suffix}": ('mean', scores),
+            f"{self.nametag}_passed{suffix}": ('sum', result_passed),
+            f"{self.nametag}_result{suffix}": result_messages,
+        }
 
     def extract_pairs(self, sample: dict):
         extracted_code = [
@@ -57,7 +111,7 @@ class PassAtK(Metric):
         return pass_at_k[self.name]
 
 
-PassAtK.register("pass@k|pass@")
+PassAtK.register("pass@k")
 
 # {"0": [[0, {"task_id": 0, "passed": false, "result": "failed: name 'df_product_full' is not defined", "completion_id": 0}]]},
 

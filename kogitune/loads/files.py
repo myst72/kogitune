@@ -27,6 +27,8 @@ def basename(path: str, split_ext=True, split_dir=True):
     if split_dir and "\\" in path:
         path = path.rpartition("\\")[-1]
     if split_ext and "." in path:
+        if path.endswith('.jsonl'):
+            return path[:-6]
         path = path.partition(".")[0]
     return path
 

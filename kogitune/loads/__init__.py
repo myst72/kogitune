@@ -1,5 +1,6 @@
 from .tokenizers import Tokenizer
 from .models import Model
-from .textevals import TextEval
+from .datasets import DataStream
+from .tables import RecordData, LeaderBoard
 from .filters import TextFilter
-from .datasets import DataStream, RecordData
+from .textevals import TextEval

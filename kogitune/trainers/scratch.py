@@ -4,8 +4,8 @@ from ..loads.commons import adhoc
 SCRATCH_MAP = {}
 
 class ScratchModel(adhoc.AdhocObject):
-    def __init__(self, name: str, kwargs):
-        self.path = name
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.pathargs = {}
 
         self.tokenizer = adhoc.load("from_kwargs", "_tokenizer", use_default=True, **kwargs)
@@ -76,20 +76,13 @@ class ScratchModel(adhoc.AdhocObject):
 
 
 class ScratchBuilder(adhoc.AdhocLoader):
+    def add_kwargs(self, path, kwargs):
+        extra_config = adhoc.get(kwargs, "scratch_config|scratch_kwargs")
+        if extra_config:
+            kwargs = kwargs | extra_config
+        return path, kwargs
 
-    def load(self, path, tag, kwargs):
-        global SCRATCH_MAP
-        path = path.partition(":")[0]
-        # TODO: config 系の処理は？
-        # extra_config = adhoc.get(kwargs, "scratch_config|scratch_kwargs"]
-
-        path = path.lower().replace("_", "-")
-        if path in SCRATCH_MAP:
-            model = SCRATCH_MAP[path](path, kwargs)
-            return model
-        raise KeyError(path)
-
-ScratchBuilder().register("scratch")
+ScratchBuilder(SCRATCH_MAP).register("scratch")
 
 
 

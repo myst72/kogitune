@@ -1,4 +1,4 @@
-from typing import Optional, List, Union, Any
+from typing import List, Any
 import os
 import re
 import zlib
@@ -9,11 +9,25 @@ from .commons import *
 
 TEXTEVAL_MAP = {}
 
+class TextEvalLoader(adhoc.AdhocLoader):
+
+    def lower(self, path):
+        return path.lower().replace('_', '-')
+
+    def load_from_map(self, path, kwargs):
+        texteval = super().load_from_map(path, kwargs)
+        # if "fraction" in kwargs:
+        #     path, tag, kwargs = adhoc.parse_path(kwargs.pop("fraction"))
+        #     fraction = self.load(path, tag, **kwargs)
+        #     return FractionEval(texteval, fraction)
+        return texteval
+
+
+TextEvalLoader(TEXTEVAL_MAP).register("texteval")
 
 class TextEval(adhoc.AdhocObject):
-    def __init__(self, name: str, subpath: str):
-        self.path = name
-        self.subpath = subpath
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.pathargs = {}
 
     def eval(self, text: str):
@@ -52,34 +66,10 @@ TextEval.register("text-length|char-length|char")
 #         return self.a.encode_path()
 
 
-class TextEvalLoader(adhoc.AdhocLoader):
-
-    def load(self, path, tag, kwargs):
-        global TEXTEVAL_MAP
-        path, _, subpath = path.partition(":")
-        if "." in path:
-            func = adhoc.load_class(path)
-            if not issubclass(func, TextEval):
-                raise TypeError(f"{path} is not a subclass of TextEval")
-            return func(subpath, kwargs)
-        path = path.lower().replace("_", "-")
-        if path in TEXTEVAL_MAP:
-            texteval = TEXTEVAL_MAP[path](subpath, kwargs)
-        else:
-            raise KeyError(path)
-        # if "fraction" in kwargs:
-        #     path, tag, kwargs = adhoc.parse_path(kwargs.pop("fraction"))
-        #     fraction = self.load(path, tag, **kwargs)
-        #     return FractionEval(texteval, fraction)
-        return texteval
-
-
-TextEvalLoader().register("texteval")
-
-
 class ByteCount(TextEval):
-    def __init__(self, subpath, kwargs) -> None:
-        super().__init__("byte-length", subpath)
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.name = "byte-length"
         self.get(kwargs, "encoding|=utf-8")
 
     def eval(self, text: str) -> int:
@@ -90,8 +80,9 @@ ByteCount.register("byte-length|byte-count|byte")
 
 
 class UniqueByteCount(TextEval):
-    def __init__(self, subpath, kwargs) -> None:
-        super().__init__("unique-byte-length", subpath)
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.name = "unique-byte-length"
         self.get(kwargs, "encoding|=utf-8")
 
     def eval(self, text: str) -> int:
@@ -102,8 +93,9 @@ UniqueByteCount.register("unique-byte-length|unique-byte-count|unique-byte")
 
 
 class ByteFraction(TextEval):
-    def __init__(self, subpath, kwargs) -> None:
-        super().__init__("byte-fraction", subpath)
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.name = "byte-fraction"
         self.get(kwargs, "encoding|=utf-8")
 
     def eval(self, text: str) -> int:
@@ -116,8 +108,9 @@ ByteFraction.register("byte-fraction")
 
 
 class ZlibCount(TextEval):
-    def __init__(self, subpath, kwargs) -> None:
-        super().__init__("zlib", subpath)
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.name = "zlib"
         self.get(kwargs, "encoding|=utf-8")
 
     def eval(self, text: str) -> int:
@@ -130,8 +123,9 @@ ZlibCount.register("zlib-length|zlib-count|zlib")
 
 
 class ZlibFraction(TextEval):
-    def __init__(self, subpath, kwargs) -> None:
-        super().__init__("zlib-fraction", subpath)
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.name = "zlib-fraction"
         self.get(kwargs, "encoding|=utf-8")
 
     def eval(self, text: str) -> int:
@@ -145,8 +139,9 @@ ZlibFraction.register("zlib-fraction")
 
 
 class AlphaCount(TextEval):
-    def __init__(self, subpath, kwargs) -> None:
-        super().__init__("alpha-count", subpath)
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.name = "alpha-count"
         self.get(kwargs, "regex|=[A-z]")
         self.pattern = re.compile(self.regex)
 
@@ -158,8 +153,9 @@ AlphaCount.register("alpha-count|alpha")
 
 
 class AlphaFraction(AlphaCount):
-    def __init__(self, subpath, kwargs) -> None:
-        super().__init__("alpha-fraction", subpath)
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.name = "alpha-fraction"
         self.get(kwargs, "regex|=[A-z]")
         self.pattern = re.compile(self.regex)
 
@@ -168,15 +164,13 @@ class AlphaFraction(AlphaCount):
         b = len(text)
         return a / b if b != 0 else 1
 
-
 AlphaFraction.register("alpha-fraction")
 
 
 class TokenCount(TextEval):
-    def __init__(self, subpath, kwargs) -> None:
-        super().__init__("token", subpath)
-        if subpath == "":
-            subpath = self.get(kwargs, "tokenizer_path|tokenizer|!!")
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**(kwargs | {"_path": "token"}))
+        subpath = self.get(kwargs, "_subpath|tokenizer_path|tokenizer|!!")
         self.tokenizer = adhoc.load("tokenizer", subpath, **kwargs)
 
     def eval(self, text: str) -> int:
@@ -187,10 +181,9 @@ TokenCount.register("token|token-count")
 
 
 class TokenFraction(TextEval):
-    def __init__(self, subpath, kwargs) -> None:
-        super().__init__("token-fraction", subpath)
-        if subpath == "":
-            subpath = self.get(kwargs, "tokenizer_path|tokenizer|!!")
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**(kwargs | {"_path": "token-fraction"}))
+        subpath = self.get(kwargs, "_subpath|tokenizer_path|tokenizer|!!")
         self.tokenizer = adhoc.load("tokenizer", subpath, **kwargs)
 
     def eval(self, text: str) -> int:
@@ -211,14 +204,13 @@ class TokenEntropy(TextEval):
     :param tokenizer:
     """
 
-    def __init__(self, subpath, kwargs):
+    def __init__(self, **kwargs):
         """
         トークンナイザーによるエントロピー評価関数を作る
         :param tokenizer: トークンナイザー(もしくはトークンナイザー名)
         """
-        super().__init__("token-entropy", subpath)
-        if subpath == "":
-            subpath = self.get(kwargs, "tokenizer_path|tokenizer|!!")
+        super().__init__(**(kwargs | {"_path": "token-entropy"}))
+        subpath = self.get(kwargs, "__subpath|tokenizer_path|tokenizer|!!")
         self.tokenizer = adhoc.load("tokenizer", subpath, **kwargs)
 
     def eval(self, text):
@@ -270,10 +262,9 @@ def compile_words(words: List[str], prefix="", suffix=""):
 
 
 class WordCount(TextEval):
-    def __init__(self, subpath, kwargs) -> None:
-        super().__init__("word-count", subpath)
-        if subpath == "":
-            subpath = self.get(kwargs, "words|word_list|word_path")
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**(kwargs | {"_path": "word-count"}))
+        subpath = self.get(kwargs, "_subpath|word_list|words|!!")
         self.pattern = compile_words(subpath)
 
     def eval(self, text: str) -> int:
@@ -284,10 +275,9 @@ WordCount.register("word-count|word")
 
 
 class WordFraction(TextEval):
-    def __init__(self, subpath, kwargs) -> None:
-        super().__init__("word-fraction", subpath)
-        if subpath == "":
-            subpath = self.get(kwargs, "words|word_list|word_path")
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**(kwargs | {"_path": "word-fraction"}))
+        subpath = self.get(kwargs, "_subpath|word_list|words|!!")
         self.pattern = compile_words(subpath)
 
     def eval(self, text: str) -> int:
@@ -300,11 +290,10 @@ WordFraction.register("word-fraction")
 
 
 class ModelLoss(TextEval):
-    def __init__(self, subpath, kwargs) -> None:
-        super().__init__("model-loss", subpath)
-        if subpath == "":
-            subpath = self.get(kwargs, "model_path|model|!!")
-        self.model = adhoc.load("model", subpath)
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**(kwargs | {"_path": "model-loss"}))
+        subpath = self.get(kwargs, "_subpath|model_path|model|!!")
+        self.model = adhoc.load("model", subpath, **kwargs)
 
     def eval(self, text: str) -> int:
         return self.model.compute_loss(text)

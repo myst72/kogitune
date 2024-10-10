@@ -8,21 +8,20 @@ from .commons import *
 
 class TokenizerLoader(adhoc.AdhocLoader):
 
-    def load(self, path, tag, kwargs):
+    def load_from_map(self, path, kwargs):
         if path == "simple":
-            return SimpleTokenizer(path, kwargs)
+            return SimpleTokenizer(**kwargs)
         if path.startswith("mecab") or path.startswith("janome"):
-            return JanomeTokenizer(path, kwargs)
+            return JanomeTokenizer(**kwargs)
         if path.startswith("sudachi"):
-            return SudachiTokenizer(path, kwargs)
-        return HFTokenizer(path, kwargs)
+            return SudachiTokenizer(**kwargs)
+        return HFTokenizer(**kwargs)
 
-TokenizerLoader().register("tokenizer")
-
+TokenizerLoader({}).register("tokenizer")
 
 class Tokenizer(adhoc.AdhocObject):
-    def __init__(self, path, kwargs):
-        self.path = path
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.pathargs = {}
 
     def unique_name(self) -> str:
@@ -39,6 +38,7 @@ class Tokenizer(adhoc.AdhocObject):
 
     def __call__(self, text: str) -> List[str]:
         return text.split(" ")
+
 
 def tokenizer_base64(tokenizer_path, length=8):
     tokenizer_path = tokenizer_path.partition("?")[0]
@@ -78,7 +78,7 @@ def load_hftokenizer(tokenizer_path, /, **kwargs):
 
     with adhoc.kwargs_from_path(tokenizer_path, **kwargs) as kwargs:
         tokenizer_path = kwargs.pop('_path')
-        args = adhoc.safe_kwargs(kwargs, *tokenizer_args_list)
+        args = adhoc.safe_kwargs(kwargs, tokenizer_args_list)
         # if "trust_remote_code" not in args:
         #     args["trust_remote_code"] = True
         # if "use_fast" not in args:
@@ -123,8 +123,9 @@ def tokenizer_from_kwargs(**kwargs):
 
 
 class HFTokenizer(Tokenizer):
-    def __init__(self, path, kwargs):
-        kwargs.pop("tokenizer_path", None)
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        path = adhoc.get(kwargs, "_subpath|_path|tokenizer_path|tokenizer|!!")
         self.tokenizer, self.pathargs = load_hftokenizer(path, **kwargs)
         self.path = self.tokenizer.name_or_path
 
@@ -213,9 +214,9 @@ def simple_tokenize(text):
 
 
 class SimpleTokenizer(Tokenizer):
-    def __init__(self, path, kwargs):
-        self.path = path
-        self.pathargs = {}
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = "simple"
 
     def __call__(self, text: str) -> List[str]:
         token = []
@@ -242,9 +243,10 @@ class SimpleTokenizer(Tokenizer):
 
 
 class JanomeTokenizer(Tokenizer):
-    def __init__(self, path, kwargs):
-        self.path = path
-        self.pathargs = {}
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = "janome"
+        #self.pathargs = {}
         janome = adhoc.safe_import('janome.tokenizer', 'janome')
         self.janome = janome.Tokenizer()
 
@@ -254,9 +256,10 @@ class JanomeTokenizer(Tokenizer):
 
 
 class SudachiTokenizer(Tokenizer):
-    def __init__(self, path, kwargs):
-        self.path = path
-        self.pathargs = {}
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = "sudachipy"
+        # self.pathargs = {}
         adhoc.safe_import('sudachipy', "sudachipy sudachidict_core")
         dictionary = adhoc.safe_import('sudachipy.dictionary', 'sudachidict_core')
         tokenizer = adhoc.safe_import('sudachipy.tokenizer', 'sudachidict_core')

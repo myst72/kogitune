@@ -2,16 +2,15 @@ from typing import List
 import numpy as np
 
 from ..loads.commons import *
-from .leaderboard import LeaderBoard
 
-import kogitune.metrics.metrics
+import kogitune.metrics.loads
 import kogitune.metrics.metrics_python
 import kogitune.metrics.metrics_textsim
 
 
 class TestDataLoader(adhoc.AdhocLoader):
 
-    def load(self, path, tag, kwargs):
+    def load_from_map(self, path, kwargs):
         from ..loads import RecordData
         import kogitune.datasets.templates
 
@@ -27,9 +26,9 @@ class TestDataLoader(adhoc.AdhocLoader):
         transform = adhoc.load('from_kwargs', 'Transform', **kwargs)
         transform.transform(samples)
 
-        datatag = tag if tag != '' else stream.datatag()
+        datatag = stream.datatag
         samples = [{"dataset": datatag} | sample for sample in samples]
-        modeltag = kwargs.get('modeltag', '(model)')
+        modeltag = kwargs.get('_modeltag', '(model)')
 
         eval_type = kwargs.get('eval_type', 'gen')
         template = adhoc.load("from_kwargs", "Template", _sample=samples[0], **kwargs)
@@ -44,7 +43,7 @@ class TestDataLoader(adhoc.AdhocLoader):
         adhoc.saved(save_path, 'Results///テストデータ')
         return record
 
-TestDataLoader().register("testdata")
+TestDataLoader({}).register("testdata")
 
 def get_save_path(modeltag, datatag, task, /, **kwargs):
     if adhoc.get(kwargs, "selfcheck|self_check|=False"):
@@ -62,22 +61,42 @@ def get_save_path(modeltag, datatag, task, /, **kwargs):
     return save_path
 
 
-def list_testdata(modeltag, eval_type, /, **kwargs):
-    if 'modeltag' not in kwargs:
-        kwargs['modeltag'] = modeltag
+def list_testdata(modeltag, /, **kwargs):
     dataset_list = adhoc.get_list(kwargs, "dataset_list|dataset|!!")
-    for dataset in dataset_list:
-        for subset in adhoc.get_list(kwargs, "dataset_subset|="):
-            kwargs['name'] = subset
-            testdata = adhoc.load("testdata", dataset, **kwargs)
-            yield testdata
+    kwargs['_modeltag'] = modeltag
+    for path in dataset_list:
+        if 'dataset_subset' in kwargs:
+            path, largs, _ = adhoc.parse_path(path, parent_args=kwargs)
+            if largs.get('name') != '*':
+                for subset_name in adhoc.get_list(kwargs, "dataset_subset|="):
+                    dataset = adhoc.load('testdata', path, **(kwargs|{'_name': subset_name}))
+                    yield dataset
+                continue
+        dataset = adhoc.load('testdata', path, **kwargs)
+        yield dataset
+
+def task_eval(model_list: List[str], metrics:List[str], /, **kwargs):
+    board = adhoc.load('from_kwargs', 'leaderboard', **kwargs)
+    task = adhoc.load('task', adhoc.get(kwargs, 'task|='))
+    for model_path in model_list:
+        model = adhoc.load("model", model_path, **kwargs)
+        for testdata in list_testdata(model.tag, **kwargs):
+            test_run = adhoc.get(kwargs, f"test_run|head|={len(testdata.samples())}")
+            test_list = [sample for sample in testdata.samples() if "output" not in sample]
+            task.prepare(test_list)
+            task.eval(model, test_list)
+            testdata.save()
+            if len(metrics) == 0:
+                metrics = task.metrics()
+            evaluate(testdata, metrics, board, **kwargs)
+    board.show()
 
 
 def chain_eval(model_list: List[str], eval_type, metric_list:List[str], /, **kwargs):
     board = adhoc.load('from_kwargs', 'leaderboard', **kwargs)
     for model_path in model_list:
-        model = adhoc.load("model", model_path, extract_prefix="model", **kwargs)
-        for testdata in list_testdata(model.modeltag, "gen", **kwargs):
+        model = adhoc.load("model", model_path, **kwargs)
+        for testdata in list_testdata(model.tag, **kwargs):
             _check_generater_args(testdata, model, model.gen_args)
 
             generate(testdata, model, eval_type, **kwargs)
@@ -87,10 +106,15 @@ def chain_eval(model_list: List[str], eval_type, metric_list:List[str], /, **kwa
 
     board.show()
 
+
+
+
+
+
 def eval_choice(model_list: List[str], /, **kwargs):
     board = adhoc.load('from_kwargs', 'leaderboard', **kwargs)
     for model_path in model_list:
-        model = adhoc.load("model", model_path, extract_prefix="model", **kwargs)
+        model = adhoc.load("model", model_path, **kwargs)
         for testdata in list_testdata(model.modeltag, "choice", **kwargs):
 
             generate(testdata, model, "choice", **kwargs)
@@ -164,32 +188,6 @@ def evaluate(testdata, metric_list:List[str], board:LeaderBoard, **kwargs):
         )
         testdata.save()
         board.score_testdata(testdata, metric.path, **kwargs)
-
-def _selfcheck(testdata, model, **kwargs):
-    test_list = [sample for sample in testdata.samples() if "selfcheck" not in sample]
-    if len(test_list) > 0:
-        adhoc.notice(
-            "Preparing data for SelfCheck///SelfCheck用のデータを準備します",
-            model=model,
-            gen_args=model.gen_args,
-        )
-        model.eval(
-            test_list,
-            batch_size=adhoc.get(kwargs, "eval_batch_size|batch_size|=2"),
-        )
-        testdata.save()
-    
-    n = adhoc.get(kwargs, "num_return_sequences|n|N|=1")
-    if n == 1:
-        adhoc.notice("num_return_sequencesを設定してね. num_return_sequences=6")
-        kwargs["num_return_sequences"] = 6
-    if "temperature" not in kwargs:
-        adhoc.notice("temperatureを設定してね. temperature=0.8")
-        kwargs["temperature"] = 1.0
-    if "do_sample" not in kwargs:
-        kwargs["do_sample"] = True
-    return kwargs
-
 
 def file_eval(files: List[str], metric_list: List[str], **kwargs):
     board = adhoc.load('from_kwargs', 'leaderboard', **kwargs)
