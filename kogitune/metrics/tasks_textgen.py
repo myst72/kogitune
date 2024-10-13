@@ -70,10 +70,11 @@ class CodeEval(TextGeneration):
 
 CodeEval.register("code_eval|pass@1|pass@k")
 
-class SelfCheckGPT(Task):
+class SelfCheckGPT(TextGeneration):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.name = 'selfcheck'
         self.n = adhoc.get(kwargs, 'num_return_sequences|n|=1')
 
     def apply_template(self, sample:dict, template:dict):
@@ -81,26 +82,29 @@ class SelfCheckGPT(Task):
 
     def eval(self, model, samples: List[dict]):
         input_texts = self.extract_values(samples, "_input")
-        output_texts = model.generate(input_texts, 1)
+        gen_args = {} #model.safe_gen_args(**self.init_kwargs)
+        if 'max_new_tokens' in self.init_kwargs:
+            gen_args['max_new_tokens'] = self.init_kwargs['max_new_tokens']
+        if 'max_length' in self.init_kwargs:
+            gen_args['max_length'] = self.init_kwargs['max_length']
+        output_texts = model.generate(input_texts, 1, **gen_args)
         self.update_values(samples, {"_reference": output_texts})
 
-        # n = adhoc.get(kwargs, "num_return_sequences|n|N|=1")
-        # if n == 1:
-        #     adhoc.notice("num_return_sequencesを設定してね. num_return_sequences=6")
-        #     kwargs["num_return_sequences"] = 6
-        # if "temperature" not in kwargs:
-        #     adhoc.notice("temperatureを設定してね. temperature=0.8")
-        #     kwargs["temperature"] = 1.0
-        # if "do_sample" not in kwargs:
-        #     kwargs["do_sample"] = True
-
-        output_texts = model.generate(input_texts, self.n)
+        gen_args = model.safe_gen_args(**self.init_kwargs)
+        if self.n == 1:
+            adhoc.notice("num_return_sequencesを設定してね. num_return_sequences=6")
+            self.n = 6
+        if self.n > 1:
+            if "temperature" not in gen_args:
+                adhoc.notice("temperatureを設定してね. temperature=1.0")
+                gen_args["temperature"] = 1.0
+            if "do_sample" not in gen_args:
+                gen_args["do_sample"] = True
+        output_texts = model.generate(input_texts, self.n, self.progress_bar, **gen_args)
         self.update_kwargs(samples, _model=model.modeltag, _task=self.name)
         self.update_values(samples, {"_output": output_texts})
-    
 
 SelfCheckGPT.register('selfcheck')
-
 
 
 def has_schema(data: dict, keys:str):
@@ -136,7 +140,6 @@ def guess_template(sample: dict):
                 "reference": "{answer_number}",
                 "prompt_n": "{question}\n(Answer) ",
             }
-
     if has_schema(sample, 'prompt|test|entry_point|canonical_solution'):
         # HumanEval
         return {

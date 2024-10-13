@@ -16,7 +16,7 @@ def safe_import(module: str, pip_install_modules=None):
         pip(pip_install_modules or module)
         module = importlib.import_module(module)
     if hasattr(module, '__version__'):
-        verbose_print(module.__name__, module.__version__, once=module.__name__)
+        adhoc_print('Modules//モジュール', module.__name__, module.__version__, once=module.__name__, lazy=True)
     return module
 
 @cli
@@ -35,10 +35,9 @@ def update_beta_cli(**kwargs):
     os.system("pip3 uninstall -y kogitune")
     pip('git+https://github.com/kkuramitsu/kogitune.git', command='install -U -q')
 
-
-def adhoc_tqdm(iterable, desc=None, total=None, **kwargs):
+def adhoc_tqdm(iterable, desc=None, total=None, /, **kwargs):
     use_tqdm = get_stacked('use_tqdm', True)
-    if use_tqdm:
+    if use_tqdm:# and safe_check(total) > 1:
         tqdm = safe_import('tqdm.auto', 'tqdm')
         return tqdm.tqdm(iterable, desc=desc, total=total)
     else:
@@ -58,8 +57,12 @@ class _DummyTqdm:
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
 
+def safe_check(total):
+    if isinstance(total, int):
+        return total
+    return 10
 
-def adhoc_progress_bar(desc=None, total=None, **kwargs):
+def adhoc_progress_bar(total=None, desc=None):
     """
     from kogitune import progress_bar
 
@@ -67,8 +70,10 @@ def adhoc_progress_bar(desc=None, total=None, **kwargs):
         for n in range(10):
             pbar.update()
     """
+    if total is None:
+        return _DummyTqdm()
     use_tqdm = get_stacked('use_tqdm', True)
-    if use_tqdm:
+    if use_tqdm and safe_check(total) > 1:
         tqdm = safe_import('tqdm.auto', 'tqdm')
         return tqdm.tqdm(desc=desc, total=total)
     else:

@@ -1,7 +1,5 @@
 from typing import List, Union
-import math
-import numpy as np
-import torch
+#import torch
 
 from .commons import *
 from .files import basename
@@ -189,7 +187,7 @@ model32_kw_list = [
 def load_hfmodel32(model_path, /, **kwargs):
     from transformers import AutoModelForCausalLM
 
-    model_args = adhoc.safe_kwargs(kwargs, model32_kw_list)
+    model_args = adhoc.safe_kwargs(kwargs, model32_kw_list, unsafe='MODEL')
     adhoc.verbose_print('Loading the model//モデルロード', 
                         model_path, model_args, once=model_path)
     try:
@@ -212,9 +210,10 @@ model4bit_kw_list = [
 
 def load_hfmodel4bit(model_path, /, **kwargs):
     try:
+        import torch
         from transformers import BitsAndBytesConfig, AutoModelForCausalLM
-
-        model_args = adhoc.safe_kwargs(kwargs, model4bit_kw_list)
+        
+        model_args = adhoc.safe_kwargs(kwargs, model4bit_kw_list, unsafe='MODEL')
 
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
@@ -236,17 +235,20 @@ def load_hfmodel4bit(model_path, /, **kwargs):
 
 
 def load_hfmodel(model_path, /, **kwargs):
+    torch = adhoc.safe_import('torch')
+
     if "use_auth_token" not in kwargs:
         kwargs["use_auth_token"] = adhoc.get(os.environ, "HF_TOKEN")
     if "trust_remote_code" not in kwargs:
         kwargs["trust_remote_code"] = True
+
     # MacOS 上でエラーになる
     if torch.cuda.is_available() and "device_map" not in kwargs:
         kwargs["device_map"] = "auto"
     if kwargs.get("attn_implementation") == "flash_attention_2":
         kwargs["torch_dtype"] = torch.bfloat16
     if "torch_dtype" in kwargs:
-        kwargs["torch_dtype"] = to_dtype(kwargs["torch_dtype"])
+        kwargs["torch_dtype"] = parse_dtype(kwargs["torch_dtype"])
 
     if adhoc.get(kwargs, "use_4bit|=False"):
         return load_hfmodel4bit(model_path, **kwargs)
@@ -254,7 +256,10 @@ def load_hfmodel(model_path, /, **kwargs):
         return load_hfmodel32(model_path, **kwargs)
 
 @adhoc.parse_value
-def parse_dtype(dtype):
+def parse_dtype(dtype, torch=None):
+    if torch:
+        torch = adhoc.safe_import('torch')
+
     dtype_mapping = {
         "float": torch.float,
         "float32": torch.float32,
@@ -305,14 +310,14 @@ def hfmodel_from_kwargs(**kwargs):
 
 
 def text_stream(texts: List[str], progress_bar=None):
+    if not progress_bar:
+        progress_bar = adhoc.progress_bar() # dummy
     if len(texts) == 1:
-        if progress_bar:
-            progress_bar.update(1)
+        progress_bar.update(1)
         yield texts[0]
     else:
         for text in texts:
-            if progress_bar:
-                progress_bar.update(1)
+            progress_bar.update(1)
             yield text
 
 
@@ -434,6 +439,7 @@ class HFModel(Model):
         return singlefy_if_single(output_texts)
         
     def compute_loss(self, input_texts: Union[List[str],str], progress_bar=None) -> Union[List[float], float]:
+        torch = adhoc.safe_import('torch')
         self.lazy_load()
         values = []
         for input_text in listfy(input_texts):

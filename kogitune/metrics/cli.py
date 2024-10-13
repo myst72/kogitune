@@ -7,6 +7,7 @@ def eval_cli(**kwargs):
         model_list = adhoc.get_list(kwargs, "model_list|model_path|!!")
         metric_list = adhoc.get_list(kwargs, "metric_list|metrics|metric")
         task_eval(model_list, metric_list, **kwargs)
+    adhoc.lazy_print() # 最後の出力
 
 @adhoc.cli
 def chaineval_cli(**kwargs):

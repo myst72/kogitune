@@ -55,7 +55,7 @@ class PassAtK(Metric):
         pass_at_k, results = self.tool.compute(
             references=testcases, predictions=candidates, k=[self.k]
         )
-        adhoc.verbose_print('Quick results///速報値', pass_at_k)
+        adhoc.verbose_print('Quick results//速報値', pass_at_k)
         #print('@@results', results)
         scores = []
         result_passed = []

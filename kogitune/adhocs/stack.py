@@ -72,6 +72,12 @@ class ChainMap(object):
                     keys.append(key)
         return keys
 
+    def items(self):
+        _items = []
+        for key in self.keys():
+            _items.append((key, self[key]))
+        return _items
+
     def __getitem__(self, key):
         cur = self
         while cur is not None:
@@ -101,7 +107,7 @@ class ChainMap(object):
     def __exit__(self, exc_type, exc_value, traceback):
         global ARGS_STACK
         if exc_type is None:
-            self.report_saved_files()
+            self.report_lazy()
             self.report_unused_keys()
         if self.opened and self.file:
             self.file.close()
@@ -138,20 +144,47 @@ class ChainMap(object):
             if self.errors == "strict":
                 raise TypeError(f"{unused_keys} is an unused keyword at {self.caller}")
 
-    def saved(self, filepath: str, desc:str='', rename_from=None):
-        if rename_from and os.path.exists(rename_from):
-            if os.path.exists(filepath):
-                os.remove(filepath)
-            os.rename(rename_from, filepath)
-        if filepath not in [file for file, _ in self.saved_files]:
-            self.saved_files.append((filepath, desc))
+    # def saved(self, filepath: str, desc:str='', rename_from=None):
+    #     if filepath not in [file for file, _ in self.saved_files]:
+    #         self.saved_files.append((filepath, desc))
 
-    def report_saved_files(self):
-        if len(self.saved_files) == 0:
+    # def report_saved_files(self):
+    #     if len(self.saved_files) == 0:
+    #         return
+    #     width = max(len(filepath) for filepath, _ in self.saved_files) + 8
+    #     for filepath, desc in self.saved_files:
+    #         adhoc_print(colored(filepath.ljust(width), "blue"), desc)
+
+    def lazy(self, key, message):
+        if not hasattr(self, 'lazy_message'):
+            self.lazy_message = {}
+        if key not in self.lazy_message:
+            self.lazy_message[key] = []
+        self.lazy_message[key].append(message)
+
+    def report_lazy(self):
+        if not hasattr(self, 'lazy_message'):
             return
-        width = max(len(filepath) for filepath, _ in self.saved_files) + 8
-        for filepath, desc in self.saved_files:
-            adhoc_print(colored(filepath.ljust(width), "blue"), desc)
+        for key, messages in self.lazy_message.items():
+            adhoc_print(f"[{key}]")
+            width = max(len(msg[0]) for msg in messages if isinstance(msg, tuple)) + 8
+            for msg in messages:
+                if isinstance(msg, tuple):
+                    adhoc_print(colored(msg[0].ljust(width), "blue"), *msg[1:], face='  ')
+                else:
+                    adhoc_print(msg, face='  ')
+        self.lazy_message = {}
+
+def lazy_print(*args):
+    args = [str(a) for a in args]
+    if len(args) == 0:
+        ARGS_STACK[0].report_lazy()
+    elif len(args) == 1:
+        ARGS_STACK[0].lazy('Remarks//後注', args)
+    elif len(args) == 2:
+        ARGS_STACK[0].lazy(args[0], args[1])
+    else:
+        ARGS_STACK[0].lazy(args[0], tuple(args[1:]))
 
 ## stacked
 
@@ -247,7 +280,11 @@ def use_stacked_key(key:Optional[str]):
         ARGS_STACK[-1].use_key(key)
 
 def saved_on_stacked(filepath: str, desc:str='', rename_from=None):
-    ARGS_STACK[-1].saved(filepath, desc, rename_from=rename_from)
+    if rename_from and os.path.exists(rename_from):
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        os.rename(rename_from, filepath)
+    adhoc_print('Saved Files//保存済み', filepath, desc, once=filepath, lazy=True)
 
 
 def kwargs_from_stacked(caller_frame=None, /, **kwargs) -> ChainMap:
@@ -302,6 +339,14 @@ def init_once():
     global ONCE
     ONCE = {}
 
+def once(message: str, once=None):
+    if once:
+        once_key = once if isinstance(once, str) else message
+        if once_key in ONCE:
+            return ''
+        ONCE[once_key] = True
+    return message
+
 def adhoc_print(*args, **kwargs):
     global ONCE, ARGS_STACK
     face = kwargs.pop("face", get_stacked("face", "🦊"))
@@ -309,6 +354,7 @@ def adhoc_print(*args, **kwargs):
     color = kwargs.pop("color", None)
     sep = kwargs.pop("sep", " ")
     end = kwargs.pop("end", os.linesep)
+    lazy = kwargs.pop("lazy", False)
     text_en = sep.join(_split_en(a) for a in args)
     text_ja = sep.join(_split_ja(a) for a in args)
     if once:
@@ -316,6 +362,9 @@ def adhoc_print(*args, **kwargs):
         if once_key in ONCE:
             return
         ONCE[once_key] = True
+    if lazy:
+        lazy_print(*args)
+        return        
     if color:
         text_en = colored(text_en, color)
         text_ja = colored(text_ja, color)
@@ -329,7 +378,6 @@ def adhoc_print(*args, **kwargs):
 
 def is_verbose():
     return get_stacked('verbose', 5) > 0
-
 
 def verbose_print(*args, **kwargs):
     if is_verbose():
@@ -381,6 +429,7 @@ def report_ArgumentError(message, throw, called):
     adhoc_print(called, face=' ', color='blue')
     exit(throw=throw)
 
+
 ## Adhoc Keys
 
 def list_keys(keys: Union[List[str], str], sep="|"):
@@ -404,6 +453,8 @@ def list_values(values: Any, map_fn=str):
             return [map_fn(x) for x in values.split("|")]
         return [map_fn(x) for x in values.split(",")]
     return [values]
+
+
 
 def edit_distance(s1, s2):
     if len(s1) < len(s2):
@@ -453,6 +504,11 @@ def get_default_key(keys: List[str]):
             return key
     return keys[0]
 
+def panda_print(key, value):
+    key = colored(key, "blue")
+    adhoc_print(f"{key}={repr(value)}", face=' 🐼', once=True)
+
+
 def get_adhoc(dic: dict, 
                 adhoc_key: str, 
                 default_value=None, 
@@ -472,7 +528,7 @@ def get_adhoc(dic: dict,
         if key.startswith("="):
             value = parse_key_value(default_key, key[1:])
             if dic.get('verbose', 0) or dic.get('use_panda', True):
-                adhoc_print(f"{default_key}={repr(value)}", face=' 🐼', once=True)
+                panda_print(default_key, value)
         elif key.startswith("!"):
             value = parse_key_value(default_key, key[1:])
             adhoc_print(
@@ -499,21 +555,6 @@ def get_adhoc(dic: dict,
         return (value, matched_key, default_key) if return_keys else value
     return (default_value, None, default_key) if return_keys else default_value
 
-def OLDrecord(kwargs: dict, *adhoc_keys: str, record_to=None, record_dic=None):
-    values = []
-    for adhoc_key in adhoc_keys:
-        recordable = True
-        if adhoc_key.startswith("_"):  # _で始まるときは残さない
-            recordable = False
-            adhoc_key = adhoc_key[1:]
-        value, matched_key, default_key = get_adhoc(kwargs, adhoc_key)
-        values.append(value)
-        if recordable and isinstance(record_dic, dict) and matched_key is not None:
-            record_dic[default_key] = value
-        if record_to is not None:
-            setattr(record_to, default_key, value)
-    return values[0] if len(values) == 1 else values
-
 def record(kwargs: dict, *adhoc_keys: str, record_to=None, record_dic=None):
     values = []
     for adhoc_key in adhoc_keys:
@@ -531,28 +572,31 @@ def get(kwargs: dict, adhoc_key: str, default_value=None,
         kwargs = get_stacked().get_kwargs() | kwargs
     return get_adhoc(kwargs, adhoc_key, default_value, return_keys=return_keys)
 
-def get_list(kwargs: dict, keys: str, use_global=False):
-    value = get(kwargs, keys, use_global=use_global, return_keys=False)
+
+def get_list(kwargs: dict, adhoc_keys: str, type_fn=list_values):
+    value = get(kwargs, adhoc_keys, use_global=False, return_keys=False)
     return list_values(value)
 
-# def copy_dict_from_keys(src_args: dict, dist_args: dict, *keys_list: List[str]):
-#     for keys in keys_list:
-#         keys = list_keys(keys)
-#         default_key = keys[0]
-#         for key in keys:
-#             if key in src_args:
-#                 dist_args[default_key] = src_args[key]
-#                 break
+def get_words(kwargs: dict, adhoc_keys: str, type_fn=list_values):
+    value, _, default_key = get(kwargs, adhoc_keys, use_global=False, return_keys=True)
+    values = type_fn(value)
+    if len(values) == 1 and isinstance(values[0], str):
+        path = values[0]
+        path, args, _ = parse_path(path, parent_args=kwargs)
+        args['_readonly'] = True
+        record = load('record', path, **args)
+        key = get(args, 'target_key|word_key')
+        if key == None:
+            sample = record.samples()[0]
+            key = list(sample.keys())[0]  # 先頭列
+        values = []
+        for sample in record.samples():
+            text = sample[key]
+            values.append(text)
+        panda_print(default_key, values)
+        return values
+    return values
 
-
-# def move_dict_from_keys(src_args: dict, dist_args: dict, *keys_list: List[str]):
-#     for keys in keys_list:
-#         keys = list_keys(keys)
-#         default_key = keys[0]
-#         for key in keys:
-#             if key in src_args:
-#                 dist_args[default_key] = src_args.pop(key)
-#                 break
 
 def extract_dict_with_prefix(dic: dict, prefix: str):
     extracted = {}
@@ -569,7 +613,8 @@ def extract_dict_with_prefix(dic: dict, prefix: str):
                 extracted[subkey] = dic[key]
     return extracted
 
-def safe_kwargs(kwargs: dict, adhoc_keys:List[str], prefix=None, unsafe=None):
+# def safe_kwargs(kwargs: dict, adhoc_keys:List[str], prefix=None, unsafe=None):
+def safe_kwargs(kwargs: dict, adhoc_keys:List[str], unsafe=None):
     extracted = {}
     for keys in adhoc_keys:
         keys = list_keys(keys)
@@ -577,12 +622,13 @@ def safe_kwargs(kwargs: dict, adhoc_keys:List[str], prefix=None, unsafe=None):
             if key in kwargs:
                 extracted[get_default_key(keys)] = kwargs[key]
                 break
-    if prefix:
-        kwargs_sub = extract_dict_with_prefix(kwargs, prefix)
-        extracted = extracted | kwargs_sub
+    # if prefix:
+    #     kwargs_sub = extract_dict_with_prefix(kwargs, prefix)
+    #     extracted = extracted | kwargs_sub
     if unsafe:
         for key, value in kwargs.items():
             if key.startswith(unsafe):
+                use_stacked_key(key)
                 key = key[len(unsafe)+1:]
                 # adhoc_print()
                 extracted[key] = value
@@ -703,8 +749,7 @@ def parse_path(path: str, parent_args:dict={}):
             path = f"{parsed_url.scheme}:{parsed_url.path}"
     else:
         path = f"{parsed_url.path}"
-    return path, (parent_args | args), parsed_url.fragment
-
+    return path, {**parent_args} | args, parsed_url.fragment
 
 def kwargs_from_path(path: str,  /, **kwargs):
     _path, kwargs, _tag = parse_path(path, kwargs)

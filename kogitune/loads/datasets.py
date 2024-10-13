@@ -1,22 +1,19 @@
 from typing import List
 import itertools
-import json
-import os
-import pandas as pd
 
 from .commons import *
-from .files import file_jsonl_reader, safe_makedirs
-
-
+from .files import file_jsonl_reader
+from .tables import parse_pandas_extention, read_samples_from_pandas
 
 class DataStreamLoader(adhoc.AdhocLoader):
 
     def load_from_map(self, path, kwargs:dict):
         if ".json" in path:
             return JSONLDataStream(**kwargs)
-        if path.endswith(".csv"):
-            return CSVDataStream(**kwargs)
+        if parse_pandas_extention(path) != '':
+            return PandasStream(**kwargs)
         name = kwargs.pop('name', None)
+        name = kwargs.pop('_name', None) or name
         if name is not None:
             if name == '*':
                 return HFDatasetNames(**kwargs)
@@ -30,38 +27,35 @@ DataStreamLoader({}).register("datastream|dataset")
 class DataStream(adhoc.AdhocObject):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # self.pathargs = {}
-        self.get(kwargs, "start|=0", "end|head")
+        self.get(kwargs, "dataset_start|=0", "dataset_end|head")
+        self.init_kwargs = {**kwargs}
 
     @property
     def datatag(self):
         return basename(self.path)
 
     def samples(self, start=0, end=None):
-        start = self.start or start
-        end = self.end or end
-        # print("@stream", start, end)
-        return self.stream(start, end)
-
+        start = start if start != 0 else self.dataset_start
+        end = end or self.dataset_end
+        return self.read_stream(start, end)
 
 class JSONLDataStream(DataStream):
 
-    def stream(self, start=0, end=None):
-        start = self.start or start
-        end = self.end or end
-        # print("@stream", start, end)
+    def read_stream(self, start, end):
         return file_jsonl_reader(self.path, start, end)
 
-class CSVDataStream(DataStream):
+class PandasStream(DataStream):
 
-    def stream(self, start=0, end=None):
-        import pandas as pd
-        start = self.start or start
-        end = self.end or end
-        df = pd.read_csv(self.path)
-        df.columns = [str(name).lower().replace(" ", "_") for name in df.columns]
-        samplelist = df.to_dict(orient="records")
-        return iter(samplelist[start:end])
+    def read_stream(self, start, end):
+        args = {**self.init_kwargs}
+        if start > 0:
+            args['skiprows'] = start
+        if end:
+            args['nrows'] = (end - start)
+        args['chunksize'] = 4096
+        samples = read_samples_from_pandas(self.path, **args)
+        return iter(samples)
+
 
 load_dataset_kw = [
     "name",  # Optional[str] = None,
@@ -81,34 +75,35 @@ load_dataset_kw = [
     # storage_options: Optional[Dict] = None,
 ]
 
-def _load_hfdataset(path, args, datasets):
-    adhoc.print('Loading///ロード中', path, args, once=path)
+def _load_hfdataset(path, args, imported_datasets):
+    adhoc.verbose_print('Loading//ロード中', path, args, once=path)
+    adhoc.verbose_print('強制的にオプションを追加するには、DATASET_xxx=yyy', once='DATASET', face='  ')
+
     try:
-        dataset = datasets.load_dataset(path, **args)
+        dataset = imported_datasets.load_dataset(path, **args)
     except BaseException as e:
         adhoc.report_ArgumentError(message='Failed to loading///データセットのロード失敗', 
                                        throw=e, 
                                        called=adhoc.function_called(
                                            'datasets.load_dataset', path, args))
-    return select_dataset_split(dataset, datasets)
+    return _select_dataset_split(dataset, imported_datasets)
         
-def select_dataset_split(dataset, datasets):
-    if isinstance(dataset, datasets.DatasetDict):
+def _select_dataset_split(dataset, imported_datasets):
+    if isinstance(dataset, imported_datasets.DatasetDict):
         keys = list(dataset.keys())
-        adhoc.verbose_print(f'splitの指定がないから、split="{keys[0]}"を使うよ', once=f'{dataset}')
+        adhoc.verbose_print(f'splitの指定がないから、split="{keys[0]}"を使うよ', once=f'split={keys[0]}')
         dataset = iter(dataset[keys[0]])
-    if isinstance(dataset, datasets.IterableDatasetDict):
+    if isinstance(dataset, imported_datasets.IterableDatasetDict):
         keys = list(dataset.keys())
-        adhoc.verbose_print(f'splitの指定がないから、split="{keys[0]}"を使うよ', once=f'{dataset}')
+        adhoc.verbose_print(f'splitの指定がないから、split="{keys[0]}"を使うよ', once=f'split={keys[0]}')
         dataset = dataset[keys[0]]
     return dataset
-
 
 class HFDatasetStream(DataStream):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.suffix = ''
-        self.pathargs = adhoc.safe_kwargs(kwargs, load_dataset_kw)
+        self.pathargs = adhoc.safe_kwargs(kwargs, load_dataset_kw, unsafe='DATASET')
 
     @property
     def datatag(self):
@@ -117,7 +112,7 @@ class HFDatasetStream(DataStream):
             datatag = datatag[len("openai_") :]
         return f"{datatag}{self.suffix}"
 
-    def stream_tagging(self, start=0, end=None):
+    def stream(self):
         datasets = adhoc.safe_import('datasets')
 
         if 'name' in self.pathargs:
@@ -126,13 +121,12 @@ class HFDatasetStream(DataStream):
 
         dataset = _load_hfdataset(self.path, self.pathargs, datasets)
         for item in dataset:
-            yield {"dataset": self.datatag, **item}
+            yield {**item}
 
-    def stream(self, start=0, end=None):
+    def read_stream(self, start, end):
         if start != 0 or end != None:
-            return itertools.islice(self.stream_tagging(), start, end)
-        return self.stream_tagging()
-
+            return itertools.islice(self.stream(), start, end)
+        return self.stream()
 
 class HFDatasetNames(HFDatasetStream):
 
@@ -140,62 +134,47 @@ class HFDatasetNames(HFDatasetStream):
         super().__init__(**kwargs)
         self.subset_names = adhoc.get_list(kwargs, "dataset_subset")
 
-    def stream_tagging(self):
+    def stream(self):
         datasets = adhoc.safe_import('datasets')
 
         if self.subset_names:
             names = self.subset_names
         else:
-            names = self.load_dataset_names(datasets)
+            names = load_dataset_names(self.path, datasets)
 
         for name in names:
             args = self.pathargs | {"name": name}
             dataset = _load_hfdataset(self.path, args, datasets)
             for item in dataset:
-                yield {"dataset": self.datatag, "group": name, **item} #| {k: v for k, v in item.items()}
+                yield {**item, "_group": name}
 
-    def load_dataset_names(self, datasets):
-        if 'JMMLU' in self.path:
-            return ['japanese_history', 'miscellaneous', 'security_studies', 'virology', 'nutrition', 
-                    'human_sexuality', 'college_mathematics', 'japanese_civics', 'econometrics', 
-                    'computer_security', 'clinical_knowledge', 'machine_learning', 'high_school_chemistry',
-                    'human_aging', 'logical_fallacies', 'sociology', 'high_school_european_history', 
-                    'high_school_statistics', 'high_school_physics', 'high_school_microeconomics', 
-                    'college_physics', 'anatomy', 'high_school_psychology', 'business_ethics', 
-                    'professional_psychology', 'college_medicine', 'elementary_mathematics', 
-                    'moral_disputes', 'marketing', 'high_school_macroeconomics', 'world_religions', 
-                    'conceptual_physics', 'professional_medicine', 'prehistory', 'high_school_mathematics', 
-                    'international_law', 'philosophy', 'japanese_idiom', 'japanese_geography', 'management',
-                      'high_school_computer_science', 'medical_genetics', 'college_computer_science', 
-                      'public_relations', 'professional_accounting', 'abstract_algebra', 'global_facts', 
-                      'college_biology', 'high_school_geography', 'world_history', 'high_school_biology', 
-                      'college_chemistry', 'electrical_engineering', 'astronomy', 'jurisprudence', 'formal_logic']
-
+def load_dataset_names(path, imported_datasets=None):
+    if 'JMMLU' in path:
+        return ['japanese_history', 'miscellaneous', 'security_studies', 'virology', 'nutrition', 
+                'human_sexuality', 'college_mathematics', 'japanese_civics', 'econometrics', 
+                'computer_security', 'clinical_knowledge', 'machine_learning', 'high_school_chemistry',
+                'human_aging', 'logical_fallacies', 'sociology', 'high_school_european_history', 
+                'high_school_statistics', 'high_school_physics', 'high_school_microeconomics', 
+                'college_physics', 'anatomy', 'high_school_psychology', 'business_ethics', 
+                'professional_psychology', 'college_medicine', 'elementary_mathematics', 
+                'moral_disputes', 'marketing', 'high_school_macroeconomics', 'world_religions', 
+                'conceptual_physics', 'professional_medicine', 'prehistory', 'high_school_mathematics', 
+                'international_law', 'philosophy', 'japanese_idiom', 'japanese_geography', 'management',
+                    'high_school_computer_science', 'medical_genetics', 'college_computer_science', 
+                    'public_relations', 'professional_accounting', 'abstract_algebra', 'global_facts', 
+                    'college_biology', 'high_school_geography', 'world_history', 'high_school_biology', 
+                    'college_chemistry', 'electrical_engineering', 'astronomy', 'jurisprudence', 'formal_logic']
+    if imported_datasets:
         try:
-            builder = datasets.load_dataset_builder(self.path)
+            builder = imported_datasets.load_dataset_builder(path)
             # データセットのサブセット（バリエーション）の名前を取得
             if hasattr(builder.info, "config_names"):
                 return builder.info.config_names
         except BaseException as e:
-            adhoc.print('Please set `dataset_subset`///`dataset_subset`を指定してね')
+            adhoc.print('Please set `dataset_subset`//`dataset_subset`を指定してね')
             adhoc.exit(throw=e)
+    return []
 
-
-
-@adhoc.from_kwargs
-def iterate_datasets_from_kwargs(**kwargs):
-    scheme = kwargs.pop('_scheme', 'testdata')
-    dataset_list = adhoc.get_list(kwargs, "dataset_list|dataset|!!")
-    for path in dataset_list:
-        if 'dataset_subset' in kwargs:
-            path, largs, _ = adhoc.parse_path(path, parent_args=kwargs)
-            if largs.get('name') != '*':
-                for subset_name in adhoc.get_list(kwargs, "dataset_subset|="):
-                    dataset = adhoc.load(scheme, path, **(kwargs|{'_name': subset_name}))
-                    yield dataset
-                continue
-        dataset = adhoc.load(scheme, path, **kwargs)
-        yield dataset
 
 
 class Transform(object):
@@ -208,10 +187,13 @@ class Transform(object):
         if transforms is not None:
             for key in adhoc.list_keys(transforms):
                 key, _, format = key.partition("=")
-                format = transforms.replace(r"\n", "\n")
+                format = format.replace(r"\n", "\n")
                 self.rules.append((key, format))
         if columns is not None:
             self.columns = adhoc.list_keys(columns, sep=",")
+
+    def isNullObject(self):
+        return len(self.rules) == 0 and self.columns is None
 
     def transform_s(self, sample: dict):
         for key, format in self.rules:
@@ -230,18 +212,18 @@ class Transform(object):
         return sample
 
     def transform(self, samples):
-        if isinstance(samples, dict):
-            return self.transform_s(samples)
         if isinstance(samples, list):
             for sample in samples:
                 self.transform_s(sample)
             return samples
+        if isinstance(samples, dict):
+            return self.transform_s(samples)
         return TransformIter(self, samples)
 
 @adhoc.from_kwargs
 def transform_from_kwargs(**kwargs):
-    transform = adhoc.get(kwargs,"transform")
-    columns = adhoc.get(kwargs,"columns*")
+    transform = adhoc.get(kwargs, "dataset_transform|transform")
+    columns = adhoc.get(kwargs,"dataset_columns|columns")
     return Transform(transform, columns)
 
 

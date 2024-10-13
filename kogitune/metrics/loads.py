@@ -1,6 +1,7 @@
 from typing import List, Union
 
 from ..loads.commons import *
+import numpy as np
 
 ## base class
 
@@ -37,10 +38,40 @@ class Metric(adhoc.AdhocObject):
         return True
 
     def calc(self, candidates:List[str], references:List[str], suffix='')->dict:
+        candidates = listfy(candidates)
+        references = listfy(references)
+        if len(candidates) > 0 and isinstance(candidates[0], list):
+            n = len(candidates[0])
+            flat_candidates = []
+            flat_references = []
+            for candidate, reference in zip(candidates, references):
+                flat_candidates.extend(candidate)
+                flat_references.extend([reference] * n)
+            return self.calc_m(flat_candidates, flat_references, n, suffix)
+        return self.calc_m(candidates, references, 1, suffix)
+    
+    def calc_m(self, candidates:List[str], references:List[str], n=1, suffix='')->dict:
         scores = []
-        for c, r in zip(listfy(candidates), listfy(references)):
-            scores.append(self.calc_s(c, r))
-        return {f"{self.nametag}{suffix}": ('mean', scores)}
+        # print('@m', len(candidates), candidates)
+        # print('@m', len(references), references)
+        for candidate, reference in zip(listfy(candidates), listfy(references), strict=True):
+            scores.append(self.calc_s(candidate, reference))
+        return {f"{self.nametag}{suffix}": ('mean', self.flatten_mean(scores, n))}
+
+    def flatten_mean(self, scores:List[float], n):
+        if n == 1:
+            return scores
+        else:
+            ss = []
+            mean_scores = []
+            for score in scores:
+                ss.append(score)
+                if len(ss) == n:
+                    mean_scores.append(np.mean(ss))
+                    ss=[]
+            
+            assert len(scores) == len(mean_scores) * n
+            return mean_scores
 
     def calc_s(self, candidate:str, reference:str) -> float:
         return 0
@@ -97,7 +128,7 @@ class Task(adhoc.AdhocObject):
         super().__init__(**kwargs)
         self.template = None
         self.verbose = VerboseCounter(**kwargs)
-        self.progress_bar = None
+        self.progress_bar = adhoc.progress_bar()
         self.init_kwargs = {**kwargs}
 
     @property
@@ -105,13 +136,13 @@ class Task(adhoc.AdhocObject):
         name = self.name if hasattr(self, "name") else self.path
         return self.tag if self.tag != '' else name
 
-    def start_progress_bar(self, total, desc:str=None):
-        self.progress_bar = adhoc.progress_bar(total=total)
+    def start_progress_bar(self, total:int, desc:str=None):
+        self.progress_bar = adhoc.progress_bar(total=total, desc=desc)
 
     def end_progress_bar(self):
         if self.progress_bar:
             self.progress_bar.close()
-            self.progress_bar = None
+            self.progress_bar = adhoc.progress_bar()
 
     def prepare(self, samples: List[dict]):
         template = None
@@ -137,7 +168,7 @@ class Task(adhoc.AdhocObject):
                 self.transform(sample)
 
     def guess_template(self, sample):
-        return None
+        raise NotImplementedError()
     
     def apply_template(self, sample:dict, template:dict):
         pass
@@ -183,7 +214,7 @@ class Task(adhoc.AdhocObject):
             if isinstance(outputs, tuple):
                 # ('mean', scores) 形式への対応
                 outputs = outputs[1]
-            assert len(outputs) == len(samples)
+            assert len(outputs) >= len(samples), f"{len(outputs)} == {len(samples)}: {outputs}"
             for i, sample in enumerate(samples):
                 sample[key] = outputs[i]
 

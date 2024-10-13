@@ -68,6 +68,7 @@ tokenizer_args_list = [
 ]
 
 def load_hftokenizer(tokenizer_path, /, **kwargs):
+    adhoc.safe_import('tokenizers')
     transformers = adhoc.safe_import('transformers')
 
     if "TOKENIZERS_PARALLELISM" not in os.environ:
@@ -78,13 +79,13 @@ def load_hftokenizer(tokenizer_path, /, **kwargs):
 
     with adhoc.kwargs_from_path(tokenizer_path, **kwargs) as kwargs:
         tokenizer_path = kwargs.pop('_path')
-        args = adhoc.safe_kwargs(kwargs, tokenizer_args_list)
+        args = adhoc.safe_kwargs(kwargs, tokenizer_args_list, unsafe='TOKENIZER')
         # if "trust_remote_code" not in args:
         #     args["trust_remote_code"] = True
         # if "use_fast" not in args:
         #     args["use_fast"] = False
-        adhoc.verbose_print('Loading a tokenizer//トークンナイザーのロード中', 
-                            tokenizer_path, args, once=tokenizer_path)
+        adhoc.verbose_print('Loading//ロード中', tokenizer_path, args, once=tokenizer_path)
+        adhoc.verbose_print('強制的にオプションを追加するには、TOKENIZER_xxx=yyy', once='TOKENIZER', face='  ')
         try:
             tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_path, **args)
         except BaseException as e:

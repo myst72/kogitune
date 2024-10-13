@@ -4,10 +4,12 @@ from .stack import (
     kwargs_from_stacked,
 
     dump_dict_as_json as dump,
+    once,
     adhoc_print as print,
     is_verbose,
     verbose_print,
     debug_print,
+    lazy_print,
     notice,
     warn,
     exit,

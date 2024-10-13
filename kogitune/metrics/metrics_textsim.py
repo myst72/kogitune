@@ -44,7 +44,7 @@ class Jaccard(Metric):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = "jaccard"
-        tokenizer_path = self.get(kwargs, "_path|tokenizer_path|tokenizer|=simple")
+        tokenizer_path = self.get(kwargs, "_subpath|tokenizer_path|tokenizer|=simple")
         self.tokenize = adhoc.load("tokenizer", tokenizer_path)
 
     def calc_s(self, candidate: str, reference: str) -> float:
@@ -84,7 +84,7 @@ class CosineSim(Metric):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = "cosine"
-        tokenizer_path = self.get(kwargs, "_path|tokenizer_path|tokenizer|=simple")
+        tokenizer_path = self.get(kwargs, "_subpath|tokenizer_path|tokenizer|=simple")
         self.tokenize = adhoc.load("tokenizer", tokenizer_path)
 
     def calc_s(self, candidate: str, reference: str) -> float:
@@ -156,7 +156,7 @@ class BLEU(Metric):
         super().__init__(**kwargs)
         self.n = kwargs.get("n", 4)
         self.name = f"bleu-{self.n}"
-        tokenizer_path = self.get(kwargs, "_path|tokenizer_path|tokenizer|=simple")
+        tokenizer_path = self.get(kwargs, "_subpath|tokenizer_path|tokenizer|=simple")
         self.tokenize = adhoc.load("tokenizer", tokenizer_path)
 
     def calc_s(self, candidate: str, reference: str) -> float:
@@ -164,6 +164,67 @@ class BLEU(Metric):
 
 
 BLEU.register("bleu|blue")
+
+
+class SacreBLEU(Metric):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = f"(sacre)bleu"
+        self.sacrebleu = adhoc.safe_import('sacrebleu')
+        tokenizer_path = self.get(kwargs, "_subpath|tokenizer_path|tokenizer")
+        if tokenizer_path:
+            self.tokenize = adhoc.load("tokenizer", tokenizer_path)
+        else:
+            self.tokenize = None
+
+    def calc_m(self, candidates: List[str], references: List[str], n=1, suffix='') -> float:
+        if self.tokenize:
+            candidates = [' '.join(self.tokenize(text)) for text in candidates]
+            references = [[' '.join(self.tokenize(text))] for text in references]
+            bleu = self.sacrebleu.corpus_bleu(candidates, references, tokenize='none')
+        else:
+            candidates = [text for text in candidates]
+            references = [[text] for text in references]
+            bleu = self.sacrebleu.corpus_bleu(candidates, references)
+        return {f'{self.name}{suffix}': [bleu.score] * (len(references) // n)}
+
+SacreBLEU.register("sacrebleu")
+
+def load_cosine_similarity():
+    from sklearn.metrics.pairwise import cosine_similarity
+    # コサイン類似度の計算
+    return cosine_similarity
+
+class CosineSim(Metric):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = f"cosine"
+        self.torch = adhoc.safe_import('torch')
+        self.model_path = self.get(kwargs, "_subpath|model_path|model|=sentence-transformers/all-MiniLM-L6-v2")
+        self.model = None
+        self.cosine_sim = load_cosine_similarity()
+
+    def lazy_load(self):
+        from transformers import AutoTokenizer, AutoModel
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
+        self.model = AutoModel.from_pretrained(self.model_path)
+
+    def get_embedding(self, text):
+        if self.model is None:
+            self.lazy_load()
+        inputs = self.tokenizer(text, return_tensors="pt", truncation=True, padding=True)
+        with self.torch.no_grad():
+            outputs = self.model(**inputs)
+        # 最後の隠れ層の平均を取りembeddingベクトルを得る
+        embedding = self.torch.mean(outputs.last_hidden_state, dim=1)
+        return embedding
+
+    def calc_s(self, candidate: str, reference: str) -> float:
+        candidate = self.get_embedding(candidate)
+        reference = self.get_embedding(reference)
+        return self.cosine_sim(candidate, reference)[0][0]
+
+CosineSim.register("embsim|vecsim")
 
 # ROUGE-L
 
@@ -224,11 +285,11 @@ ROUGE_L.register("rouge_l")
 
 class BERTScore(Metric):
     def __init__(self, **kwargs):
-        super().__init__("BERTScore", **kwargs)
+        super().__init__(**kwargs)
         self.name = "BERTScore"
         bert_score = adhoc.safe_import('bert_score')
         self.bert_score = bert_score.score
-        self.model_path = adhoc.get(kwargs, "_subpath|model_type|model_path|model|!!")
+        self.model_path = adhoc.get(kwargs, "_subpath|model_type|model_path|model")
         self.lang = kwargs.get("lang", "en")
 
     def calc_s(self, candidate: str, reference: str) -> float:
@@ -237,60 +298,17 @@ class BERTScore(Metric):
         )
         return F1.mean().item()
 
-    def calc(self, candidates, references, suffix=''):
-        candidates = listfy(candidates)
-        references = listfy(references)
+    def calc_m(self, candidates, references, n=1, suffix=''):
         P, R, F1 = self.bert_score(
             candidates, references, 
             model_type=self.model_path,
             lang=self.lang, 
         )
         return {
-            f"{self.nametag}_F1{suffix}": list(F1),
-            f"{self.nametag}_Precision{suffix}": list(P),
-            f"{self.nametag}_Recall{suffix}": list(R),
+            f"{self.nametag}_F1{suffix}": self.flatten_mean(F1.numpy().tolist(), n),
+            f"{self.nametag}_Precision{suffix}": self.flatten_mean(P.numpy().tolist(),n),
+            f"{self.nametag}_Recall{suffix}": self.flatten_mean(R.numpy().tolist(),n),
         }
 
 
 BERTScore.register("bertscore|bert_score")
-
-
-# def get_bert_embeddings(text, model, tokenizer):
-#     import torch
-#     inputs = tokenizer(
-#         text, return_tensors="pt", padding=True, truncation=True, max_length=512
-#     )
-#     with torch.no_grad():
-#         outputs = model(**inputs)
-#     return outputs.last_hidden_state.squeeze(0)
-
-
-# from scipy.spatial.distance import cosine
-
-# cand_embeddings = get_bert_embeddings(candidate, self.model, self.tokenizer)
-# ref_embeddings = get_bert_embeddings(reference, self.model, self.tokenizer)
-
-# def cosine_similarity(a, b):
-#     return 1 - cosine(a, b)
-
-# # Compute R-precision, R-recall, and F1
-# precision_scores = torch.max(
-#     cosine_similarity(cand_embeddings[:, None], ref_embeddings[None, :]), dim=1
-# )[0]
-# recall_scores = torch.max(
-#     cosine_similarity(ref_embeddings[:, None], cand_embeddings[None, :]), dim=1
-# )[0]
-
-# precision = precision_scores.mean().item()
-# recall = recall_scores.mean().item()
-# f1 = (
-#     2 * precision * recall / (precision + recall)
-#     if (precision + recall) > 0
-#     else 0
-# )
-# # return {
-# #     "precision": precision,
-# #     "recall": recall,
-# #     "f1": f1
-# # }
-# return f1

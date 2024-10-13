@@ -1,9 +1,8 @@
 from typing import List, Union, Any
-import numpy as np
 
 from ..loads.commons import *
 from ..loads import Model, LeaderBoard
-
+from .loads import Task
 
 def task_eval(model_list: List[str], metrics:List[str], /, **kwargs):
     # タスクをロードしておきます。
@@ -15,20 +14,21 @@ def task_eval(model_list: List[str], metrics:List[str], /, **kwargs):
     save_step = adhoc.get(kwargs, "save_steps|save_step")
     if save_step:
         kwargs["_resume"] = True # 前の続きから実行する (ただし、resumeが優先)
-    task = adhoc.load('task', adhoc.get(kwargs, 'task|='))
+    task:Task = adhoc.load('task', adhoc.get(kwargs, 'task|='))
 
     for model_path in model_list:
         model : Model = adhoc.load("model", model_path, _lazy = True, **kwargs)
         for taskdata in list_testdata(model.modeltag, task.tasktag, **kwargs):
             # 未処理のサンプルのみ対象にする
-            samples = [sample for sample in taskdata.samples() if sample.get("_model") != model.modeltag]
+            samples = [sample for sample in taskdata.samples() 
+                       if sample.get("_model") != model.modeltag]
             if len(samples) > 0:   
                 head = adhoc.get(kwargs, "test_run|head")
                 if head:
                     samples = samples[:head]
                 
                 # save_stepごとに保存する
-                save_step = adhoc.get(kwargs, "save_steps|save_step", len(samples))
+                save_step = adhoc.get(kwargs, "save_steps|save_step|=4")
                 with VerboseCounter(**kwargs) as verbose:
                     task.start_progress_bar(total=len(samples), desc=model.modeltag)
                     for start in range(0, len(samples), save_step):
@@ -56,6 +56,7 @@ def task_eval(model_list: List[str], metrics:List[str], /, **kwargs):
                     results = task.calc(metric, samples)
                     board.pivot_table(samples, results, **kwargs)
                 taskdata.save()
+        model = None
     board.show()
 
 def list_testdata(modeltag, tasktag, /, **kwargs):
@@ -65,16 +66,20 @@ def list_testdata(modeltag, tasktag, /, **kwargs):
     for path in dataset_list:
         if 'dataset_subset' in kwargs:
             path, largs, _ = adhoc.parse_path(path, parent_args=kwargs)
+            if kwargs['dataset_subset'] == '*':
+                from ..loads.datasets import load_dataset_names
+                kwargs['dataset_subset'] = load_dataset_names(path)
             if largs.get('name') != '*':
-                for subset_name in adhoc.get_list(kwargs, "dataset_subset|="):
-                    dataset = adhoc.load('testdata', path, **(kwargs|{'_name': subset_name}))
-                    yield dataset
+                for subset_name in adhoc.get_list(kwargs, f"dataset_subset"):
+                    taskdata = load_taskdata(path, **(kwargs|{'_name': subset_name}))
+                    yield taskdata
                 continue
         taskdata = load_taskdata(path, **kwargs)
         yield taskdata
 
+
 def load_taskdata(path, /, **kwargs):
-    from ..loads import RecordData
+    from ..loads import RecordData, Transform
 
     stream = adhoc.load("datastream", path, **kwargs)
     samples = [sample for sample in stream.samples()]
@@ -85,8 +90,10 @@ def load_taskdata(path, /, **kwargs):
             record.tags = (sample['_model'], sample['_dataset'], sample['_task'])
             return record
 
-    transform = adhoc.load('from_kwargs', 'Transform', **kwargs)
-    transform.transform(samples)
+    transform: Transform = adhoc.load('from_kwargs', 'Transform', **kwargs)
+    if not transform.isNullObject():
+        samples = transform.transform(samples)
+        adhoc.verbose_print("Transform//簡易的な変形:", adhoc.dump(samples[0]))
 
     modeltag = kwargs.get('_modeltag', '(model)')
     datatag = stream.datatag
