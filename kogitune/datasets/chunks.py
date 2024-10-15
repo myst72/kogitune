@@ -7,12 +7,12 @@ import string
 import hashlib
 import subprocess
 import tempfile
+from urllib.parse import urlparse
 import numpy as np
 
 from ..loads.commons import *
 
 pyzstd = adhoc.safe_import("pyzstd")
-
 
 def compress_file(input_file, output_file):
     """
@@ -86,15 +86,80 @@ def read_json_from_url(url: str) -> dict:
             print(repr(e))
     return {}
 
+def download_file_from_url(url, local_filename):
+    requests = adhoc.safe_import("requests")
 
-def download_file_async(url, local_file):
-    temp_file = f"{local_file}_"
+    with requests.get(url, stream=True) as r:
+        r.raise_for_status()  # ダウンロードのステータスを確認
+        # ダウンロードしたファイルをローカルに保存
+        with open(local_filename, "wb") as f:
+            for chunk in r.iter_content(
+                chunk_size=8192
+            ):  # ファイルを少しずつダウンロード
+                f.write(chunk)
+
+
+def download_file_from_s3(s3_url, local_filename):
+    """
+    # 使用例
+    s3_url = "s3://my-bucket/path/to/file.txt"
+    download_file_from_s3(s3_url, "downloaded_file.txt")
+    """
+    boto3 = adhoc.safe_import("boto3")
+
+    # S3 URLを解析してバケット名とオブジェクトキーを取得
+    parsed_url = urlparse(s3_url)
+
+    if parsed_url.scheme != "s3":
+        raise ValueError(f"Invalid S3 URL: {s3_url}")
+
+    bucket_name = parsed_url.netloc  # バケット名
+    s3_key = parsed_url.path.lstrip("/")  # ファイルのパス
+
+    # S3クライアントの作成
+    s3 = boto3.client("s3")
+
+    # ファイルをダウンロード
+    s3.download_file(bucket_name, s3_key, local_filename)
+
+
+def download_file(url, local_filename=None):
+    try:
+        if local_filename is None:
+            local_filename = url.rpartition("/")[-1]
+            local_filename = f"_{local_filename}"
+        if url.startswith("s3://"):
+            download_file_from_s3(url, local_filename)
+        else:
+            download_file_from_url(url, local_filename)
+        return local_filename
+    except BaseException as e:
+        adhoc.print("ダウンロード失敗", url, repr(e))
+        adhoc.exit(throw=e)
+
+
+def download_file_async(url):
+    _, dot, suffix = url.split('/')[-1].partition('.')
+    # 空のテンポラリファイルを作成して、ファイルディスクリプタとパスを取得
+    fd, temp_file = tempfile.mkstemp(suffix=f'{dot}{suffix}.tmp')
+    # すぐにファイルをクローズしてファイルディスクリプタを解放
+    os.close(fd)
+    # 必要に応じて、後で削除
+    # os.unlink(path)
+    local_file = temp_file[:-4]
     if url.startswith("s3://"):
         cmd = f"aws s3 cp {url} {temp_file} && mv {temp_file} {local_file}"
     else:
         cmd = f"wget -qO {temp_file} {url} && mv {temp_file} {local_file}"
-    print("@", cmd)
-    subprocess.call(f"{cmd} &", shell=True, stderr=subprocess.DEVNULL)
+    print("@", os.path.exists(local_file), cmd)
+    try:
+        # subprocess.runでコマンドを実行し、エラー時に例外を発生させる
+        subprocess.run(f"{cmd} &", shell=True, check=True, stderr=subprocess.PIPE)
+    except subprocess.CalledProcessError as e:
+        # エラーをExceptionで捕捉
+        print(f"非同期ダウンロード失敗 '{cmd}' failed: {e.stderr.decode()}")
+        adhoc.exit(throw=e)
+    return local_file
 
 
 ################
@@ -121,6 +186,7 @@ class Packer(adhoc.AdhocObject):
         self.NL_id = tokens[-2]
         self.EOS_id = tokens[-1]
         self.extra_tokens = EMPTY_TOKENS
+        self.init_noize(kwargs)
 
     def new_store(self, base_dir, max_files=512, max_blocks=4096):
         self.store = StoreGenerator(
@@ -140,6 +206,7 @@ class Packer(adhoc.AdhocObject):
     def encode(self, text: str, rec: dict) -> List[int]:
         extra_tokens = self.extra_tokens
         tokens = self.tokenize(text, rec)
+        tokens = self.noize(tokens, rec)
         if len(extra_tokens) == 0:
             rec["num_headblocks"] = rec.get("num_headblocks", 0) + 1
         else:
@@ -205,6 +272,58 @@ class Packer(adhoc.AdhocObject):
             rec["num_headblocks"] = rec.get("num_headblocks", 0) + 1
         return end
 
+    def init_noize(self, kwargs):
+        noize_path = adhoc.get(kwargs, 'noize_map|noize')
+        if noize_path:
+            self.noize_map = load_token_noize_prob(noize_path)
+            self.mask_token_id = adhoc.get(kwargs, 'mask_token_id|mask_id')
+            if self.mask_token_id is None:
+                mask_token = adhoc.get(kwargs, 'mask_token|mask')
+                if mask_token is not None:
+                    ids = self.tokenizer.convert_tokens_to_ids([mask_token])
+                    adhoc.verbose_print('マスクトークン', mask_token, ids)
+                    self.mask_token_id = ids[0]
+            self.random_seed = adhoc.get(kwargs, 'random_seed|=42')
+        else:
+            self.noize_map = None
+
+    def noize(self, tokens:List[int], rec:dict)->List[int]:
+        if not self.noize_map:
+            return tokens
+        random.seed(self.random_seed)
+        new_tokens=[tokens[0]]
+        if self.mask_token_id is None:
+            for t in tokens[1:]:
+                if random.random() > self.noize_map[t]:
+                    new_tokens.append(t)
+            rec['noize_tokens'] = rec.get('noize_tokens', 0) + (len(tokens) - len(new_tokens))
+        else:
+            masked=0
+            for t in tokens[1:]:
+                if random.random() > self.noize_map[t]:
+                    new_tokens.append(t)
+                elif new_tokens[-1] != self.mask_token_id:
+                    new_tokens.append(self.mask_token_id)
+                    masked+=1
+            rec['noize_tokens'] = rec.get('noize_tokens', 0) + (len(tokens) - (len(new_tokens)-masked))
+            rec['masked_tokens'] = rec.get('masked_tokens', 0) + masked
+        self.random_seed = random.randint(0, 2**31)
+        return new_tokens
+
+def load_token_noize_prob(self, noize_path):
+    noize_ratio = noize_path if isinstance(noize_path, float) else 0.05
+    noize_map = np.full(self.tokenizer.vocab_size, noize_ratio)
+    if isinstance(noize_path, str):
+        import pandas as pd
+        df = pd.read_csv(noize_path)
+        for w, r in zip(df['token'], df['ratio']):
+            if not isinstance(w, str):
+                continue
+            ids = self.tokenizer.convert_tokens_to_ids([w])
+            noize_map[ids[0]] = r
+        adhoc.verbose_print(f'平均ノイズ確率 {noize_map.mean()}', filepath=noize_path)
+    noize_map[self.tokenizer.eos_token_id] = 0.0
+    return noize_map
 
 ################
 
@@ -325,11 +444,11 @@ class StoreGenerator:
 
 def store(kwargs):
     base_dir = adhoc.get(kwargs, 'store_path|save_path|!!')
-    dataset = adhoc.get('_file|dataset|!!')
+    dataset = adhoc.get(kwargs, '_file|dataset|!!')
     data = adhoc.load("datastream", dataset, **kwargs)
     packer = Packer(kwargs)
     store = packer.new_store(base_dir)
-    for sample in data.stream():
+    for sample in data.samples():
         text = sample["text"]
         store.encode(text)
     store.save()
@@ -476,15 +595,15 @@ class TokenDataset(adhoc.AdhocObject):
         meta = self.files[chunk_index]
         if "filepath" in meta:
             filepath = meta["filepath"]
-            if os.path.exists(filepath):
+            if meta.get("is_tempfile", False):
+                os.unlink(filepath)
+                del meta["filepath"]
+                del meta["is_tempfile"]
+            if get_filesize(filepath) > 0:
                 blocks = load_chunk(filepath)
-                if meta.get("is_tempfile", False):
-                    os.unlink(filepath)
-                    del meta["filepath"]
-                    del meta["is_tempfile"]
                 return blocks
-        path = meta["path"]
-        url = f"{self.path}/{path}"
+        url = os.path.join(self.path, meta["path"])
+        adhoc.verbose_print('非同期ダウンロード失敗', url)
         print("@meta", chunk_index, meta, url)
         with tempfile.NamedTemporaryFile(mode="w+", suffix=".npz.zst", delete=True) as temp_file:
             download_file(url, temp_file.name)
@@ -495,12 +614,9 @@ class TokenDataset(adhoc.AdhocObject):
         meta = self.files[chunk_index]
         if "filepath" in meta and os.path.exists(meta["filepath"]):
             return True
-    #     path = meta["path"]
-    #     url = f"{self.path}/{path}"
-    #     temp_file = tempfile.NamedTemporaryFile(mode="w+", suffix=".npz.zst", delete=False)
-    #     meta["filepath"] = temp_file.name
-    #     meta["is_tempfile"] = True
-    #     download_file_async(url, temp_file.name)
+        url = os.path.join(self.path, meta["path"])
+        meta["filepath"] = download_file_async(url)
+        meta["is_tempfile"] = True
 
 
 class StoreLoader(adhoc.AdhocLoader):

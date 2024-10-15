@@ -1,27 +1,28 @@
 import kogitune.adhocs as adhoc
 
 from .adhocs.modules import (
-    update_beta_cli, 
-    update_cli
+    update_beta_cli as update_beta, 
+    update_cli as update,
 )
 
 from .loads.cli import (
-    texteval_cli
+    texteval_cli as texteval,
 )
 
 from .datasets.cli import (
-    add_vocab_cli,
+    add_vocab_cli as add_vocab,
+    get_cli as get_split,
+    store_pack_cli as store_pack,
 )
 
 from .trainers.cli import (
-    scratch_cli,
-    pretrain_cli,    
+    scratch_cli as scratch,
+    pretrain_cli as pretrain,    
 )
 
 from .metrics.cli import (
-    eval_cli,
-    chaineval_cli, 
-    leaderboard_cli
+    eval_cli as eval,
+    leaderboard_cli as leaderboard,
 )
 
 def main(subcommand=None, /, **kwargs):

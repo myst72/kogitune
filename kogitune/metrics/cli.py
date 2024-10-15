@@ -1,7 +1,14 @@
-from ..loads.commons import adhoc, listfy
+from ..loads.commons import adhoc
 
 @adhoc.cli
 def eval_cli(**kwargs):
+    """
+    eval サブコマンド
+
+    - task 評価タスク
+    - model_list|model_path: 対処とするモデル
+    - metric_list|metrics: 評価尺度
+    """
     from .tasks import task_eval
     with adhoc.kwargs_from_stacked(**kwargs) as kwargs:
         model_list = adhoc.get_list(kwargs, "model_list|model_path|!!")
@@ -16,14 +23,17 @@ def chaineval_cli(**kwargs):
 
 @adhoc.cli
 def leaderboard_cli(**kwargs):
+    """
+    リーダーボードの作成
+    評価タスクのデータからリーダーボードを作成します。
+
+    leaderboard: リーダーボードファイル (leaderboard.csv)
+    files: 評価タスクの結果ファイル
+    names: 成績表に集計する項目名
+    """
+    from .tasks import calc_leaderboard
     with adhoc.kwargs_from_stacked(**kwargs) as kwargs:
-        board = adhoc.load('from_kwargs', 'leaderboard', **kwargs)
-        for filepath in adhoc.get_list(kwargs, "files|!!"):
-            testdata = adhoc.load("testdata", filepath)
-            metric_list = adhoc.get_list(kwargs, "metric_list|metrics|metric")
-            groupby = adhoc.get(kwargs, 'groupby')
-            index = adhoc.get(kwargs, 'index')
-            for name in metric_list:
-                board.pivot_table(testdata.samples(), name, index=index, groupby=groupby)
-        board.show()
+        files = adhoc.get_list(kwargs, "files|!!")
+        names = adhoc.get_list(kwargs, "names")
+        calc_leaderboard(files, names, **kwargs)
 

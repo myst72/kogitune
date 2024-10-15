@@ -6,9 +6,9 @@ class TextGeneration(Task):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.name = '0-shot'
         self.n = 1
-        self.few_shots = adhoc.get(kwargs, 'few_shots')
+        self.shots = adhoc.get(kwargs, 'shots|shot|=0')
+        self.name = f'{self.shots}-shot'
 
     def guess_template(self, sample):
         return guess_template(sample)
@@ -21,9 +21,13 @@ class TextGeneration(Task):
         #     sample["_test"] = self.format(template, "test", sample)
 
 
+
     def eval(self, model:Model, samples: List[dict]):
         input_texts = self.extract_values(samples, "_input")
-        gen_args = model.safe_gen_args(**self.init_kwargs)
+        if self.chat_mode:
+            input_texts = model.transform_messages(input_texts, heading=self.heading_messages)
+            adhoc.verbose_print('[Chat Message]', dump=input_texts, once="chat_message")
+        gen_args = model.filter_gen_args(self.n, **self.init_kwargs)
         output_texts = model.generate(input_texts, self.n, self.progress_bar, **gen_args)
         self.update_kwargs(samples, _model=model.modeltag, _task=self.name)
         self.update_values(samples, {"_output": output_texts})
@@ -146,11 +150,14 @@ def guess_template(sample: dict):
             "prompt": "{prompt}",
             "reference": "{canonical_solution}\n",
             "test": "\n{test}\n\ncheck({entry_point})\n",
-            "back_translation": "{instruction}\n\n{prompt}{canonical_solution}\n",
         }
     if has_schema(sample, 'question|choice0|choice1|choice2|choice3|choice4|label'):
         # JCommonSenseQA
         return {
+            "shot": [
+                {"role": "user", "content": "日本一高い山は？"},
+                {"role": "assistant", "content": "Answer [0]"},
+            ],
             "prompt": "{question}\n選択肢(Choice): [0] {choice0} [1] {choice1} [2] {choice2} [3] {choice3} [4] {choice4}\n",
             "reference": "{label}",
             "choice": ["0", "1", "2", "3", "4"],

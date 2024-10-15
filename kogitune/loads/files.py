@@ -1,7 +1,6 @@
 from typing import List
 import os
 import json
-from urllib.parse import urlparse
 
 from .commons import adhoc
 
@@ -105,52 +104,3 @@ def file_jsonl_reader(filepath: str, start=0, end=None):
         pbar.close()
 
 
-def download_file_from_url(url, local_filename):
-    requests = adhoc.safe_import("requests")
-
-    with requests.get(url, stream=True) as r:
-        r.raise_for_status()  # ダウンロードのステータスを確認
-        # ダウンロードしたファイルをローカルに保存
-        with open(local_filename, "wb") as f:
-            for chunk in r.iter_content(
-                chunk_size=8192
-            ):  # ファイルを少しずつダウンロード
-                f.write(chunk)
-
-
-def download_file_from_s3(s3_url, local_filename):
-    """
-    # 使用例
-    s3_url = "s3://my-bucket/path/to/file.txt"
-    download_file_from_s3(s3_url, "downloaded_file.txt")
-    """
-    boto3 = adhoc.safe_import("boto3")
-
-    # S3 URLを解析してバケット名とオブジェクトキーを取得
-    parsed_url = urlparse(s3_url)
-
-    if parsed_url.scheme != "s3":
-        raise ValueError(f"Invalid S3 URL: {s3_url}")
-
-    bucket_name = parsed_url.netloc  # バケット名
-    s3_key = parsed_url.path.lstrip("/")  # ファイルのパス
-
-    # S3クライアントの作成
-    s3 = boto3.client("s3")
-
-    # ファイルをダウンロード
-    s3.download_file(bucket_name, s3_key, local_filename)
-
-
-def download_file(url, local_filename=None):
-    try:
-        if local_filename is None:
-            local_filename = url.rpartition("/")[-1]
-        if url.startswith("s3://"):
-            download_file_from_s3(url, local_filename)
-        else:
-            download_file_from_url(url, local_filename)
-        return True
-    except BaseException as e:
-        adhoc.print("@download", repr(e))
-        return False

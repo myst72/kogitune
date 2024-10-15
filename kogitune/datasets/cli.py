@@ -1,4 +1,3 @@
-import json
 from ..loads.commons import *
 
 @adhoc.cli
@@ -25,21 +24,15 @@ def add_vocab_cli(**kwargs):
         tokenizer, table = make_mte(tokenizer, words, bases, start=start, end=end, **kwargs)
         tokenizer.save_pretrained(save_path)
         save_table('add_tokens.csv', table, save_path=save_path)
-        
-@adhoc.cli
-def add_multi_token_cli(**kwargs):
-    add_vocab_cli(**kwargs)
-
-
 
 
 @adhoc.cli
 def get_cli(**kwargs):
     """
-    巨大なデータセットを複数ファイルに分割します。
+    巨大なデータセットをダウンロードして、複数ファイルに分割します。
 
     - dataset（必須）: データセットの指定
-    - split=1000000: １ファイルあたりの最大データ件数
+    - file_split=1000000: １ファイルあたりの最大データ件数
     - output_file: 出力先ファイル (拡張子は .jsonl.zst がおすすめ)
     - filter: 簡易的なフィルターも指定できます
     """
@@ -48,9 +41,9 @@ def get_cli(**kwargs):
     
     with adhoc.kwargs_from_stacked(**kwargs) as kwargs:
         dataset = adhoc.get(kwargs, "dataset|dataset_source")
-        start = adhoc.get(kwargs, "start|=0")
+        start = adhoc.get(kwargs, "dataset_start|=0")
         end = adhoc.get(kwargs, "end|head")
-        max_items = adhoc.get(kwargs, "split|!1000000")
+        max_items = adhoc.get(kwargs, "file_split|!1000000")
         datastream = adhoc.load("datastream", dataset, **kwargs)
         config = {"data_source": dataset}
 
@@ -71,13 +64,13 @@ def get_cli(**kwargs):
                 if sample is not None:
                     splitter.write(json.dumps(sample, ensure_ascii=False))
 
-
+@adhoc.cli
 def store_pack_cli(**kwargs):
     from concurrent.futures import ProcessPoolExecutor, as_completed
     from ..datasets.chunks import store
 
     with adhoc.kwargs_from_stacked(**kwargs) as kwargs:
-        base_dir = adhoc.get(kwargs, "save_path|!!")
+        base_dir = adhoc.get(kwargs, "store_path|save_path|!!")
         files = adhoc.get_list(kwargs, "files|!!")
         data_list = [{'_file': file, **kwargs} for file in files]
         num_workers = adhoc.get(kwargs, "num_workers|=1")

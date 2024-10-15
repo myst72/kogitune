@@ -77,7 +77,6 @@ def list_testdata(modeltag, tasktag, /, **kwargs):
         taskdata = load_taskdata(path, **kwargs)
         yield taskdata
 
-
 def load_taskdata(path, /, **kwargs):
     from ..loads import RecordData, Transform
 
@@ -115,8 +114,38 @@ def load_taskdata(path, /, **kwargs):
     adhoc.saved(save_path, f'Results//実験結果 {(modeltag, datatag, task)}')
     return record
 
+def calc_leaderboard(files: Union[List[str], str], names:Union[List[str], str] = None, /, **kwargs):
+    board: LeaderBoard = adhoc.load('from_kwargs', 'leaderboard', **kwargs)
 
+    for path in listfy(files):
+        record = load_taskfile(path, **kwargs)
+        samples = record.samples()
+        if name is None:
+            adhoc.print(f"`names='{example_names(samples)}'`のように指定してください", adhoc.dump([0]))
+            return
+        for name in listfy(names):
+            if ':' in name:
+                name, _, aggfunc = name.partition(':')
+            else:
+                aggfunc = 'mean'      
+            board.pivot_table(record.samples(), name, aggfunc, **kwargs)
+    board.show()
 
+def load_taskfile(path, /, **kwargs):
+    from ..loads import RecordData
 
+    stream = adhoc.load("datastream", path, **kwargs)
+    samples = [sample for sample in stream.samples()]
+    sample = samples[0]
+    if '_dataset' in sample and '_model' in sample and '_task' in sample:
+        record = RecordData(path, samples, **kwargs)
+        record.tags = (sample['_model'], sample['_dataset'], sample['_task'])
+        return record
+    adhoc.exit(throw=IOError(f'評価タスクの保存データではありません。{path}'))
 
-
+def example_names(samples):
+    aggfuncs = []
+    for key, value in samples[0].items():
+        if isinstance(value, float):
+            aggfuncs.append(f'{key}:mean')
+    return ':'.join(aggfuncs)

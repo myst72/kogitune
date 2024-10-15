@@ -355,6 +355,12 @@ def adhoc_print(*args, **kwargs):
     sep = kwargs.pop("sep", " ")
     end = kwargs.pop("end", os.linesep)
     lazy = kwargs.pop("lazy", False)
+    dump_value = kwargs.pop("dump", None)
+    if dump_value:
+        if isinstance(dump_value, list):
+            dump_value = dump_value[:3] # 3つまでにする
+        args = args + (dump_dict_as_json(dump_value),)
+
     text_en = sep.join(_split_en(a) for a in args)
     text_ja = sep.join(_split_ja(a) for a in args)
     if once:
@@ -368,13 +374,36 @@ def adhoc_print(*args, **kwargs):
     if color:
         text_en = colored(text_en, color)
         text_ja = colored(text_ja, color)
-    print(f"{face}{text_en}", end=end)
+    msg = messagefy(**kwargs)
+    print(f"{face}{text_en}", msg, end=end)
     if text_en != text_ja and end == os.linesep:
-        print(f"{face}{text_ja}", end=end)
+        print(f"{face}{text_ja}", msg, end=end)
     file = ARGS_STACK[-1].file
     if file:
-        print(f"{face}{text_en}", end=end, file=file)
+        print(f"{face}{text_en}", msg, end=end, file=file)
 
+def messagefy(**kwargs):
+    ss = []
+    if 'if_dislike' in kwargs:
+        examples = kwargs.pop('if_dislike')
+        ss.append('If you dislike this, set//もしお嫌なら')
+        ss.append(example_key_values(examples))
+    if 'if_enforce' in kwargs:
+        examples = kwargs.pop('if_enforce')
+        ss.append('If you enforce to add, set//もし強制的に加えたいなら')
+        ss.append(example_key_values(examples))
+    
+    for key, value in kwargs.items():
+        key = colored(key, 'blue')
+        ss.append(f'{key} = {value}')
+    return ' '.join(ss)
+
+def example_key_values(examples:dict, color='red', face='🐼'):
+    ss = []
+    for key, value in examples.items():
+        key = colored(key, color)
+        ss.append(f'{face}{key} = {value}')
+    return ', '.join(ss)
 
 def is_verbose():
     return get_stacked('verbose', 5) > 0
@@ -523,8 +552,7 @@ def get_adhoc(dic: dict,
             if '_path' in dic:
                 path = dic['_path']
                 adhoc_print(f"{path}には、`{default_key}=...`が必要です")
-                exit(throw=KeyError(default_key))
-            raise KeyError(default_key)
+            exit(throw=KeyError(f"`{default_key}=...`が必要です"))
         if key.startswith("="):
             value = parse_key_value(default_key, key[1:])
             if dic.get('verbose', 0) or dic.get('use_panda', True):
@@ -540,6 +568,9 @@ def get_adhoc(dic: dict,
             matched_key = key
             use_stacked_key(key)
             value = dic.get(key)
+        elif key[0].isupper() and key in os.environ:
+            matched_key = key
+            value = parse_key_value(key, os.environ[key])
         else:
             use_simkey = key.count("*")
             if use_simkey == 0:
@@ -616,12 +647,10 @@ def extract_dict_with_prefix(dic: dict, prefix: str):
 # def safe_kwargs(kwargs: dict, adhoc_keys:List[str], prefix=None, unsafe=None):
 def safe_kwargs(kwargs: dict, adhoc_keys:List[str], unsafe=None):
     extracted = {}
-    for keys in adhoc_keys:
-        keys = list_keys(keys)
-        for key in keys:
-            if key in kwargs:
-                extracted[get_default_key(keys)] = kwargs[key]
-                break
+    for adhoc_key in adhoc_keys:
+        value, matched, default_key = get_adhoc(kwargs, adhoc_key, return_keys=True)
+        if matched:
+            extracted[default_key] = value
     # if prefix:
     #     kwargs_sub = extract_dict_with_prefix(kwargs, prefix)
     #     extracted = extracted | kwargs_sub

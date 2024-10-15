@@ -127,8 +127,10 @@ class Task(adhoc.AdhocObject):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.template = None
+        self.chat_mode = True
         self.verbose = VerboseCounter(**kwargs)
         self.progress_bar = adhoc.progress_bar()
+        self.heading_messages = adhoc.get(kwargs, 'heading_messages')
         self.init_kwargs = {**kwargs}
 
     @property
@@ -153,9 +155,13 @@ class Task(adhoc.AdhocObject):
                 else:
                     template = self.guess_template(sample)
                     if template:
-                        adhoc.verbose_print('テンプレート推論', 
-                                            adhoc.dump(template), 
-                                            'お気に召さない場合は, `template_config=file.json`で変更してね', once=True)
+                        adhoc.verbose_print('[Inferred Template]', dump=template, once=True,
+                                            if_dislike={'template_config': repr("(template.json)")})
+                        self.template = template
+                        if self.shots > 0 and 'shot_messages' in template:
+                            self.heading_messages = template['shot_messages']
+                            self.set_few_shots()
+
             if template:
                 try:
                     self.apply_template(sample, template)
@@ -170,6 +176,19 @@ class Task(adhoc.AdhocObject):
     def guess_template(self, sample):
         raise NotImplementedError()
     
+    def set_few_shots(self):
+        if self.heading_messages and self.shots > 0:
+            if self.shots *2 != len(self.heading_messages):
+                self.heading_messages = self.heading_messages[:self.shots*2]
+                shots = len(self.heading_messages)//2
+                if self.shots == shots:
+                    return
+                # 再調整
+                self.shots = shots
+                self.name = f'{self.shots}-shot'
+                adhoc.verbose_print(f'{self.shots}-shot//ショット', dump=self.heading_messages)
+
+
     def apply_template(self, sample:dict, template:dict):
         pass
 
