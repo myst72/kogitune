@@ -11,39 +11,41 @@ class OpenAIModel(Model):
         self.model_path = adhoc.get(kwargs, "_subpath|model_path|model")
         openai = adhoc.safe_import('openai')
         api_key = adhoc.get(kwargs, "api_key|OPENAI_API_KEY|!!")
-        self.client = openai.OpenAI(api_key=api_key)
+        try:
+            self.client = openai.OpenAI(api_key=api_key)
+        except BaseException as e:
+            adhoc.print('環境変数 OPENAI_API_KEY を設定してね', repr(e))
+            adhoc.exit(throw=e)
 
     def supported_gen_args(self) -> List[str]:
         return [
             ## https://platform.openai.com/docs/api-reference/chat/create
-            "frequency_penalty",
-            "logit_bias",
-            "logprobs",
-            "top_logprobs",
-            "max_tokens|max_new_tokens",
-            "presence_penalty",
-            "response_format",
-            "seed",
-            "service_tier",
-            "stop",
-            # "stream",
+            "_max_tokens|max_tokens|max_new_tokens|=256",
+            "_n|n|num_return_sequences",
             "temperature",
             "top_p",
+            "frequency_penalty",
+            # "logit_bias",
+            # "logprobs",
+            # "top_logprobs",
+            # "presence_penalty",
+            # "response_format",
+            # "seed",
+            # "service_tier",
+            "stop",
+            # "stream",
         ]
+    
+    def unwrap(self):
+        return self.client
 
-    def generate(self, input_texts: Union[List[str], str], n=1, progress_bar=None, /, **kwargs):
-        gen_args = adhoc.parse_value_of_args(kwargs)
-        if "max_new_tokens" in gen_args:
-            gen_args["max_tokens"] = gen_args.pop("max_new_tokens")
-        if "num_return_sequences" in gen_args:
-            gen_args.pop("num_return_sequences")
-        return super().generate(input_texts, n, progress_bar, **gen_args)
-
-    def generate_s(self, input_text: str, n=1, /, **gen_args):
+    def generate_s(self, input_text: str, /, **gen_args):
+        gen_args = self.filter_gen_args(**gen_args)
+        if isinstance(input_text, str):
+            input_text = self.get_default_messages(input_text)
         response = self.client.chat.completions.create(
             model=self.model_path,
-            messages=[{"role": "user", "content": input_text}],
-            n=n,
+            messages=input_text,
             **gen_args,
         )
         responses = [choice.message.content for choice in response.choices]
@@ -64,13 +66,14 @@ class BedrockModel(Model):
 
     def supported_gen_args(self) -> List[str]:
         return [
+            "_max_tokens|max_tokens|max_new_tokens|=256",
+            "_n|n|num_return_sequences",
             "temperature",
-            "max_new_tokens|max_tokens|=256",
             "top_p",
         ]
 
-    def generate_s(self, input_text: Union[List, str], n=1, /, **kwargs):
-        gen_args = self.filter_gen_args(n, kwargs)
+    def generate_s(self, input_text: Union[List, str], /, **kwargs):
+        gen_args = self.filter_gen_args(kwargs)
 
         if isinstance(input_text, str):
             response = self.client.invoke_model(
@@ -102,7 +105,7 @@ class BedrockModel(Model):
             output_text = response_body["content"][0]["text"]
             return output_text
 
-BedrockModel.regiser("bedrock")
+BedrockModel.regiser("anthropic")
 
 # class BedrockModel(Model):
 #     def __init__(self, model_path, kwargs):

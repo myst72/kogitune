@@ -127,9 +127,9 @@ class Task(adhoc.AdhocObject):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.template = None
-        self.chat_mode = True
         self.verbose = VerboseCounter(**kwargs)
         self.progress_bar = adhoc.progress_bar()
+        self.shots = adhoc.get(kwargs, 'shots|shot|=0')
         self.heading_messages = adhoc.get(kwargs, 'heading_messages')
         self.init_kwargs = {**kwargs}
 
@@ -247,4 +247,5 @@ class Task(adhoc.AdhocObject):
         global TASK_MAP
         for scheme in schemes.split("|"):
             TASK_MAP[scheme] = cls
+            TASK_MAP[scheme.replace('_', '')] = cls
 

@@ -46,30 +46,14 @@ class Model(adhoc.AdhocObject):
         """
         pass
 
-    # def start_progress_bar(self, total):
-    #     self.lazy_load()
-    #     self.progress_bar = adhoc.progress_bar(total=total, desc=f"{self.modeltag}")
-
-    # def end_progress_bar(self):
-    #     if self.progress_bar:
-    #         self.progress_bar.close()
-    #         self.progress_bar = None
-
     def compute_loss(self, input_texts: Union[List[str],str], progress_bar=None) -> float:
         raise NotImplementedError()
  
     def supported_gen_args(self) -> List[str]:
         return []
 
-    def filter_gen_args(self, n=1, /, **kwargs):
+    def filter_gen_args(self, **kwargs):
         return adhoc.safe_kwargs(kwargs, self.supported_gen_args(), unsafe='GEN')
-
-    # def to_chat_message(self, input_text:str):
-    #     if isinstance(input_text, str):
-    #         return [
-    #             {"role": "user", "content": input_text}
-    #         ]
-    #     return input_text
 
     @classmethod
     def is_valid_prompt(cls, input_text: Union[List[dict], str]):
@@ -84,6 +68,25 @@ class Model(adhoc.AdhocObject):
             return True
         return False
     
+    def get_default_messages(self, input_text:str):
+        if isinstance(input_text, str):
+            return [
+                {"role": "user", "content": input_text}
+            ]
+        return input_text
+
+    def transform_messages(self, input_texts: Union[List[str],str], heading=None) -> Union[List[str], str]:
+        """
+        少数ショットに対応したメッセージの作成プロンプト
+        """
+        heading = heading or []
+        output_texts = []
+        for input_text in self.listfy_prompt(input_texts):
+            messages = heading[:]
+            messages.append(self.get_default_messages(input_text))
+            output_texts.append(messages)
+        return singlefy_if_single(output_texts)
+
     def listfy_prompt(self, input_text: Union[List[dict],str]):
         if isinstance(input_text, list) and len(input_text) > 0 and isinstance(input_text[0],dict):
             return [input_text]
@@ -91,25 +94,38 @@ class Model(adhoc.AdhocObject):
             return [input_text]
         return input_text
 
-    def transform_messages(self, input_texts: Union[List[str],str], heading=None) -> Union[List[str], str]:
-        heading = heading or []
-        output_texts = []
-        for input_text in self.listfy_prompt(input_texts):
-            messages = heading[:]
-            messages.append({'role': 'user', 'content': input_text})
-            output_texts.append(messages)
-        return singlefy_if_single(output_texts)
+    def generate(self, prompts: List[Union[List[dict],str]], progress_bar=None, /, **kwargs) -> Union[List[str], str]:
+        """
+        テキストを生成する
 
-    def generate(self, input_texts: Union[List[str],str], n=1, progress_bar=None, /, **kwargs) -> Union[List[str], str]:
+        主なパラメータ
+        prompts: テキストかメッセージ(dict形式)のリスト
+        
+        帰り値
+        生成されたテキストのリスト
+        """
+
+        gen_args = self.filter_gen_args(kwargs)
         output_texts = []
-        for input_text in self.listfy_prompt(input_texts):
-            output_texts.append(self.generate_s(input_text, n, **kwargs))
+        for prompt in self.listfy_prompt(prompts):
+            output_texts.append(self.generate_s(prompt, **gen_args))
             if progress_bar:
                 progress_bar.update(1)
         return singlefy_if_single(output_texts)
 
-    def generate_s(self, input_text: Union[List[dict], str], n=1, /, **kwargs) -> Union[List[str], str]:
+    def generate_s(self, prompt: Union[List[dict], str], /, **kwargs) -> Union[List[str], str]:
+        """
+        generate_s の単一入力バージョン（generateから呼び出される)
+
+        主なパラメータ
+        prompt: テキストかメッセージ(dict形式)
+        
+        帰り値
+        生成されたテキスト、もしくは、そのリスト
+        """
+        
         gen_args = self.filter_gen_args(kwargs)
+
         return NotImplementedError()
 
     @classmethod
@@ -119,45 +135,16 @@ class Model(adhoc.AdhocObject):
 
 ## HF
 
-class HFModel(Model):
+class TokenizerModel(Model):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.lazy_kwargs = {**kwargs}
-        self.progress_bar = None
-        if not kwargs.get('_lazy', False):
-            self.lazy_load()
-
-    def lazy_load(self):
-        if self.lazy_kwargs is None:
-            return
-        transformers = adhoc.safe_import('transformers')
-        kwargs = self.lazy_kwargs
-        self.lazy_kwargs = None
-
         tokenizer_path = adhoc.get(kwargs, f'tokenizer_path|_subpath|model_path|={self.path}')
-        self._tokenizer = adhoc.load('_tokenizer', tokenizer_path, **kwargs)
-
+        self.tokenizer = adhoc.load('_tokenizer', tokenizer_path, **kwargs)
         # なぜか必要らしい（↓）
         self.tokenizer.pad_token = self.tokenizer.eos_token
-        # if 'max_length' in kwargs:
-        #     self.tokenizer.trancation = True
-        model_path = adhoc.get(kwargs, f'_subpath|model_path|={self.path}')
-        self._model, self.pathargs = load_hfmodel(model_path, **kwargs)
-        self.device = next(self._model.parameters()).device
-        adhoc.verbose_print(f"Model has loaded on {self.device}.///モデルは{self.device}上にロードされました")
-        hf_token = adhoc.get(kwargs, "use_auth_token|HF_TOKEN")
-        self.generator = transformers.pipeline(
-            "text-generation",
-            model=self._model,
-            tokenizer=self._tokenizer,
-            use_auth_token=hf_token,
-        )
-        # if 'max_length' in gen_args:
-        #     gen_args['trancation'] = True
-        # if "return_full_text" not in self.gen_args:
-        #     self.gen_args["return_full_text"] = False
-        # if "pad_token_id" not in self.gen_args:
-        #     self.gen_args["pad_token_id"] = self.tokenizer.eos_token_id
+        if not kwargs.get('_lazy', False):
+            self.lazy_load()
 
     @property
     def modeltag(self):
@@ -165,67 +152,10 @@ class HFModel(Model):
             return self.tag
         return basename(self.path, split_ext=False)
 
-    @property
-    def model(self):
-        self.lazy_load()
-        return self._model
-
-    @property
-    def tokenizer(self):
-        self.lazy_load()
-        return self._tokenizer
-
-    def supported_gen_args(self) -> List[str]:
-        return [
-            ## 4.39.0 https://huggingface.co/docs/transformers/main_classes/text_generation
-            "max_length",  # (int, optional, defaults to 20) — The maximum length the generated tokens can have.
-            "max_new_tokens",  # (int, optional) — The maximum numbers of tokens to generate
-            "min_length",  # (int, optional, defaults to 0) — The minimum length of the sequence to be generated
-            "min_new_tokens",  # (int, optional) — The minimum numbers of tokens to generate
-            "early_stopping",  # (defaults to False) Controls the stopping condition for beam-based methods, like beam-search.
-            "do_sample",  # (bool, optional, defaults to False) — Whether or not to use sampling ; use greedy decoding otherwise.
-            "num_beams",  # (int, optional, defaults to 1) — Number of beams for beam search. 1 means no beam search.
-            "num_beam_groups",  # (int, optional, defaults to 1) — Number of groups to divide num_beams into in order to ensure diversity among different groups of beams. this paper for more details.
-            "penalty_alpha",  # (float, optional) — The values balance the model confidence and the degeneration penalty in contrastive search decoding.
-            "temperature",  # (float, optional, defaults to 1.0) — The value used to modulate the next token probabilities.
-            "top_k",  # (int, optional, defaults to 50) — The number of highest probability vocabulary tokens to keep for top-k-filtering.
-            "top_p",  # (float, optional, defaults to 1.0) — If set to float < 1, only the smallest set of most probable tokens with probabilities that add up to top_p or higher are kept for generation.
-            "typical_p",  # (float, optional, defaults to 1.0) — Local typicality measures how similar the conditional probability of predicting a target token next is to the expected conditional probability of predicting a random token next, given the partial text already generated. If set to float < 1, the smallest set of the most locally typical tokens with probabilities that add up to typical_p or higher are kept for generation. See this paper for more details.
-            "epsilon_cutoff",  # (float, optional, defaults to 0.0) — If set to float strictly between 0 and 1, only tokens with a conditional probability greater than epsilon_cutoff will be sampled. In the paper, suggested values range from 3e-4 to 9e-4, depending on the size of the model. See Truncation Sampling as Language Model Desmoothing for more details.
-            "eta_cutoff",  # (float, optional, defaults to 0.0) — Eta sampling is a hybrid of locally typical sampling and epsilon sampling. If set to float strictly between 0 and 1, a token is only considered if it is greater than either eta_cutoff or sqrt(eta_cutoff) * exp(-entropy(softmax(next_token_logits))). The latter term is intuitively the expected next token probability, scaled by sqrt(eta_cutoff). In the paper, suggested values range from 3e-4 to 2e-3, depending on the size of the model. See Truncation Sampling as Language Model Desmoothing for more details.
-            "diversity_penalty",  # (float, optional, defaults to 0.0) — This value is subtracted from a beam’s score if it generates a token same as any beam from other group at a particular time. Note that diversity_penalty is only effective if group beam search is enabled.
-            "repetition_penalty",  # (float, optional, defaults to 1.0) — The parameter for repetition penalty. 1.0 means no penalty. See this paper for more details.
-            "encoder_repetition_penalty",  # (float, optional, defaults to 1.0) — The paramater for encoder_repetition_penalty. An exponential penalty on sequences that are not in the original input. 1.0 means no penalty.
-            "length_penalty",  # (float, optional, defaults to 1.0) — Exponential penalty to the length that is used with beam-based generation. It is applied as an exponent to the sequence length, which in turn is used to divide the score of the sequence. Since the score is the log likelihood of the sequence (i.e. negative), length_penalty > 0.0 promotes longer sequences, while length_penalty < 0.0 encourages shorter sequences.
-            "no_repeat_ngram_size",  # (int, optional, defaults to 0) — If set to int > 0, all ngrams of that size can only occur once.
-            "bad_words_ids",  # (List[List[int]], optional) — List of list of token ids that are not allowed to be generated. Check NoBadWordsLogitsProcessor for further documentation and examples.
-            "force_words_ids",  # (List[List[int]] or List[List[List[int]]], optional) — List of token ids that must be generated. If given a List[List[int]], this is treated as a simple list of words that must be included, the opposite to bad_words_ids. If given List[List[List[int]]], this triggers a disjunctive constraint, where one can allow different forms of each word.
-            "renormalize_logits",  # (bool, optional, defaults to False) — Whether to renormalize the logits after applying all the logits processors or warpers (including the custom ones). It’s highly recommended to set this flag to True as the search algorithms suppose the score logits are normalized but some logit processors or warpers break the normalization.
-            "constraints",  # (List[Constraint], optional) — Custom constraints that can be added to the generation to ensure that the output will contain the use of certain tokens as defined by Constraint objects, in the most sensible way possible.
-            "forced_bos_token_id",  # (int, optional, defaults to model.config.forced_bos_token_id) — The id of the token to force as the first generated token after the decoder_start_token_id. Useful for multilingual models like mBART where the first generated token needs to be the target language token.
-            "forced_eos_token_id",  # (Union[int, List[int]], optional, defaults to model.config.forced_eos_token_id) — The id of the token to force as the last generated token when max_length is reached. Optionally, use a list to set multiple end-of-sequence tokens.
-            "remove_invalid_values",  # (bool, optional, defaults to model.config.remove_invalid_values) — Whether to remove possible nan and inf outputs of the model to prevent the generation method to crash. Note that using remove_invalid_values can slow down generation.
-            "exponential_decay_length_penalty",  # (tuple(int, float), optional) — This Tuple adds an exponentially increasing length penalty, after a certain amount of tokens have been generated. The tuple shall consist of: (start_index, decay_factor) where start_index indicates where penalty starts and decay_factor represents the factor of exponential decay
-            "suppress_tokens",  # (List[int], optional) — A list of tokens that will be suppressed at generation. The SupressTokens logit processor will set their log probs to -inf so that they are not sampled.
-            "begin_suppress_tokens",  # (List[int], optional) — A list of tokens that will be suppressed at the beginning of the generation. The SupressBeginTokens logit processor will set their log probs to -inf so that they are not sampled.
-            "forced_decoder_ids",  # (List[List[int]], optional) — A list of pairs of integers which indicates a mapping from generation indices to token indices that will be forced before sampling. For example, [[1, 123]] means the second generated token will always be a token of index 123.
-            "sequence_bias",  # (Dict[Tuple[int], float], optional)) — Dictionary that maps a sequence of tokens to its bias term. Positive biases increase the odds of the sequence being selected, while negative biases do the opposite. Check SequenceBiasLogitsProcessor for further documentation and examples.
-            "guidance_scale",  # (float, optional) — The guidance scale for classifier free guidance (CFG). CFG is enabled by setting guidance_scale > 1. Higher guidance scale encourages the model to generate samples that are more closely linked to the input prompt, usually at the expense of poorer quality.
-            "low_memory",  # (bool, optional) — Switch to sequential beam search and sequential topk for contrastive search to reduce peak memory. Used with beam search and contrastive search.
-        ]
-
-    def unwrap(self):
-        self.lazy_load()
-        return self._model
-
-    def filter_gen_args(self, n, **kwargs):
-        gen_args = super().filter_gen_args(n, **kwargs)
-        gen_args['num_return_sequences'] = n
-        if "return_full_text" not in gen_args:
-            gen_args["return_full_text"] = False
-        if "max_length" in gen_args and "max_new_tokens" in gen_args:
-            gen_args.pop("max_length")
-        return gen_args
+    def lazy_load(self):
+        if self.lazy_kwargs is None:
+            return
+        pass
 
     def format_text_prompt(self, input_text:Union[List[str],str]) -> str:
         if isinstance(input_text, str):
@@ -237,12 +167,65 @@ class HFModel(Model):
             ss.append(msg['content'])
         return '\n'.join(ss)
 
-    def generate(self, input_texts: Union[List[str],str], n=1, progress_bar=None, /, **kwargs) -> Union[List[str], str]:
+
+class HFModel(TokenizerModel):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def lazy_load(self):
+        if self.lazy_kwargs is None:
+            return
+        transformers = adhoc.safe_import('transformers')
+        kwargs = self.lazy_kwargs
+        self.lazy_kwargs = None
+
+        model_path = adhoc.get(kwargs, f'_subpath|model_path|={self.path}')
+        self._model, self.pathargs = load_hfmodel(model_path, **kwargs)
+        self.device = next(self._model.parameters()).device
+        adhoc.verbose_print(f"Model has loaded on {self.device}.//モデルは{self.device}上にロードされました")
+        hf_token = adhoc.get(kwargs, "use_auth_token|HF_TOKEN")
+        self.generator = transformers.pipeline(
+            "text-generation",
+            model=self._model,
+            tokenizer=self._tokenizer,
+            use_auth_token=hf_token,
+        )
+
+    @property
+    def model(self):
         self.lazy_load()
-        gen_args = self.filter_gen_args(n, **kwargs)
+        return self._model
+
+    def unwrap(self):
+        self.lazy_load()
+        return self._model
+
+    def supported_gen_args(self) -> List[str]:
+        return [
+            "_n|num_return_sequences|n",
+            "_do_sample|do_sample",  # (bool, optional, defaults to False) — Whether or not to use sampling ; use greedy decoding otherwise.
+            "_max_tokens|max_new_tokens|max_tokens|=256",  # (int, optional) — The maximum numbers of tokens to generate
+            "temperature",  # (float, optional, defaults to 1.0) — The value used to modulate the next token probabilities.
+            "top_k",  # (int, optional, defaults to 50) — The number of highest probability vocabulary tokens to keep for top-k-filtering.
+            "top_p",  # (float, optional, defaults to 1.0) — If set to float < 1, only the smallest set of most probable tokens with probabilities that add up to top_p or higher are kept for generation.
+            "repetition_penalty",  # (float, optional, defaults to 1.0) — The parameter for repetition penalty. 1.0 means no penalty. See this paper for more details.
+#            "max_length",  # (int, optional, defaults to 20) — The maximum length the generated tokens can have.
+        ]
+
+    def filter_gen_args(self, **kwargs):
+        gen_args = super().filter_gen_args(**kwargs)
+        if "return_full_text" not in gen_args:
+            gen_args["return_full_text"] = False
+        if "max_length" in gen_args and "max_new_tokens" in gen_args:
+            gen_args.pop("max_length")
+        return gen_args
+
+    def generate(self, input_texts: Union[List[str],str], progress_bar=None, /, **kwargs) -> Union[List[str], str]:
+        self.lazy_load()
+        gen_args = self.filter_gen_args(**kwargs)
         
         input_texts = [self.format_text_prompt(s) for s in self.listfy_prompt(input_texts)]
-        adhoc.verbose_print('[Formatted Prompt]', dump=input_texts, once="formatted_prompt")
+        adhoc.verbose_print('[Prompt]', dump=input_texts, once="formatted_prompt")
 
         outputs = self.generator(text_stream(input_texts, progress_bar), **gen_args)
         output_texts = []
@@ -304,6 +287,7 @@ model4bit_kw_list = [
 
 def load_hfmodel4bit(model_path, /, **kwargs):
     try:
+        adhoc.safe_import('bitsandbytes')
         import torch
         from transformers import BitsAndBytesConfig, AutoModelForCausalLM
         

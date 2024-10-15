@@ -644,16 +644,12 @@ def extract_dict_with_prefix(dic: dict, prefix: str):
                 extracted[subkey] = dic[key]
     return extracted
 
-# def safe_kwargs(kwargs: dict, adhoc_keys:List[str], prefix=None, unsafe=None):
 def safe_kwargs(kwargs: dict, adhoc_keys:List[str], unsafe=None):
     extracted = {}
     for adhoc_key in adhoc_keys:
         value, matched, default_key = get_adhoc(kwargs, adhoc_key, return_keys=True)
         if matched:
             extracted[default_key] = value
-    # if prefix:
-    #     kwargs_sub = extract_dict_with_prefix(kwargs, prefix)
-    #     extracted = extracted | kwargs_sub
     if unsafe:
         for key, value in kwargs.items():
             if key.startswith(unsafe):

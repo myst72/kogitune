@@ -6,8 +6,8 @@ class TextGeneration(Task):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.chat_mode = True
         self.n = 1
-        self.shots = adhoc.get(kwargs, 'shots|shot|=0')
         self.name = f'{self.shots}-shot'
 
     def guess_template(self, sample):
@@ -20,15 +20,13 @@ class TextGeneration(Task):
         # if 'test' in template:
         #     sample["_test"] = self.format(template, "test", sample)
 
-
-
     def eval(self, model:Model, samples: List[dict]):
         input_texts = self.extract_values(samples, "_input")
         if self.chat_mode:
             input_texts = model.transform_messages(input_texts, heading=self.heading_messages)
             adhoc.verbose_print('[Chat Message]', dump=input_texts, once="chat_message")
         gen_args = model.filter_gen_args(self.n, **self.init_kwargs)
-        output_texts = model.generate(input_texts, self.n, self.progress_bar, **gen_args)
+        output_texts = model.generate(input_texts, self.progress_bar, **gen_args)
         self.update_kwargs(samples, _model=model.modeltag, _task=self.name)
         self.update_values(samples, {"_output": output_texts})
     
@@ -46,6 +44,7 @@ class CodeEval(TextGeneration):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.n = adhoc.get(kwargs, 'num_return_sequences|n|=1')
+        self.chat_mode = False
 
     def apply_template(self, sample:dict, template:dict):
         sample["_input"] = self.format(template, "prompt", sample)
@@ -64,6 +63,7 @@ class CodeEval(TextGeneration):
 
     def calc(self, metric, samples: List[dict]):
         from .metrics_python import openai_extract_code
+
         inputs = self.extract_values(samples, "_input")
         outputs = self.extract_values(samples, "_output")
         candidates = self.merge(inputs, outputs, openai_extract_code)
@@ -86,25 +86,16 @@ class SelfCheckGPT(TextGeneration):
 
     def eval(self, model, samples: List[dict]):
         input_texts = self.extract_values(samples, "_input")
-        gen_args = {} #model.safe_gen_args(**self.init_kwargs)
-        if 'max_new_tokens' in self.init_kwargs:
-            gen_args['max_new_tokens'] = self.init_kwargs['max_new_tokens']
-        if 'max_length' in self.init_kwargs:
-            gen_args['max_length'] = self.init_kwargs['max_length']
-        output_texts = model.generate(input_texts, 1, **gen_args)
+        gen_args = model.filter_gen_args(**self.init_kwargs)
+
+        output_texts = model.generate(input_texts, _n=1, _do_sample=False, **gen_args)
         self.update_values(samples, {"_reference": output_texts})
 
-        gen_args = model.safe_gen_args(**self.init_kwargs)
-        if self.n == 1:
-            adhoc.notice("num_return_sequencesを設定してね. num_return_sequences=6")
-            self.n = 6
-        if self.n > 1:
-            if "temperature" not in gen_args:
-                adhoc.notice("temperatureを設定してね. temperature=1.0")
-                gen_args["temperature"] = 1.0
-            if "do_sample" not in gen_args:
-                gen_args["do_sample"] = True
-        output_texts = model.generate(input_texts, self.n, self.progress_bar, **gen_args)
+        n = adhoc.get(gen_args, "num_return_sequences|n|=6")
+        if "temperature" not in gen_args:
+            adhoc.notice("temperatureを設定してね. temperature=1.0")
+            gen_args["temperature"] = 1.0
+        output_texts = model.generate(input_texts, self.progress_bar, _n=n, _do_sample=True, **gen_args)
         self.update_kwargs(samples, _model=model.modeltag, _task=self.name)
         self.update_values(samples, {"_output": output_texts})
 
