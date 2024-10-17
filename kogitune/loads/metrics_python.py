@@ -1,11 +1,10 @@
-from typing import List
 import os
 import ast
 import traceback
 import signal
 
 from ..loads.commons import *
-from .loads import Metric
+from .metrics import Metric
 
 ##
 # HumanEval

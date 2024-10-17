@@ -461,7 +461,8 @@ def store(kwargs):
 class TokenDataset(adhoc.AdhocObject):
 
     def __init__(self, base: str, chunkfiles: List[dict], **kwargs):
-        super().__init__(base, kwargs)
+        print('@@@TokenDataset', kwargs)
+        super().__init__(**kwargs)
         total = 0
         files = []
         self.block_size = self.get(kwargs, "block_size|max_length|=512")

@@ -1,7 +1,7 @@
 import math
 
 from ..loads.commons import *
-from .loads import Task, Metric
+from .tasks import Task, Metric
 from .tasks_textgen import guess_template
 
 class QAChoice(Task):

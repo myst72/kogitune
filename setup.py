@@ -23,7 +23,7 @@ setup(
     packages=["kogitune",
               'kogitune.datasets',
               'kogitune.filters',
-              'kogitune.stores',
+              'kogitune.data',
               'kogitune.trainers',
               'kogitune.metrics'],
     package_dir={"kogitune": "kogitune"},

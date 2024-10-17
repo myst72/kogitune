@@ -67,7 +67,7 @@ TextFilterLoader(FILTER_MAP).register("filter")
 def filter_from_kwargs(**kwargs):
     filter = kwargs.pop("filter", None)
     if filter is None:
-        filter = TextFilter('nop', '', kwargs)
+        filter = TextFilter(**{"_path": "none"})
     else:
         filter = adhoc.load("filter", filter, extract_prefix="filter", **kwargs)
     return filter

@@ -3,7 +3,7 @@ import math
 from collections import Counter
 
 from ..loads.commons import *
-from .loads import Metric
+from .metrics import Metric
 
 
 def levenshtein_similarity(candidate, reference):
@@ -19,7 +19,6 @@ class EditSim(Metric):
 
     def calc_s(self, candidate: str, reference: str) -> float:
         return levenshtein_similarity(candidate, reference)
-
 
 EditSim.register("editsim|levenshtein")
 

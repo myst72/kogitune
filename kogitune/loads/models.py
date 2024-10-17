@@ -1,6 +1,3 @@
-from typing import List, Union
-#import torch
-
 from .commons import *
 from .files import basename
 
@@ -105,7 +102,7 @@ class Model(adhoc.AdhocObject):
         生成されたテキストのリスト
         """
 
-        gen_args = self.filter_gen_args(kwargs)
+        gen_args = self.filter_gen_args(**kwargs)
         output_texts = []
         for prompt in self.listfy_prompt(prompts):
             output_texts.append(self.generate_s(prompt, **gen_args))
@@ -187,7 +184,7 @@ class HFModel(TokenizerModel):
         self.generator = transformers.pipeline(
             "text-generation",
             model=self._model,
-            tokenizer=self._tokenizer,
+            tokenizer=self.tokenizer,
             use_auth_token=hf_token,
         )
 
@@ -239,7 +236,7 @@ class HFModel(TokenizerModel):
         self.lazy_load()
         values = []
         for input_text in listfy(input_texts):
-            inputs = self._tokenizer(input_text, return_tensors="pt")
+            inputs = self.tokenizer(input_text, return_tensors="pt")
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
             labels = inputs["input_ids"].clone()
             # 不要なキーを除去

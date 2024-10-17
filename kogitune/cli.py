@@ -11,8 +11,9 @@ from .loads.cli import (
 
 from .datasets.cli import (
     add_vocab_cli as add_vocab,
+    get_cli as get,
     get_cli as get_split,
-    store_pack_cli as store_pack,
+    store_cli as store,
 )
 
 from .trainers.cli import (

@@ -14,14 +14,14 @@ def load_wandb(**kwargs):
         with adhoc.kwargs_from_stacked(**kwargs) as aargs:
             if "wandb_team" in aargs:
                 wandb.init(
-                    entity=adhoc.get(kwargs, "wandb_team"],
-                    project=adhoc.get(kwargs, "project"],
-                    name=adhoc.get(kwargs, "run_name"],
+                    entity=adhoc.get(kwargs, "wandb_team"),
+                    project=adhoc.get(kwargs, "project"),
+                    name=adhoc.get(kwargs, "run_name"),
                 )
             else:
                 wandb.init(
-                    project=adhoc.get(kwargs, "project"],
-                    name=adhoc.get(kwargs, "run_name"],
+                    project=adhoc.get(kwargs, "project"),
+                    name=adhoc.get(kwargs, "run_name"),
                 )
             return wandb
     except ModuleNotFoundError:

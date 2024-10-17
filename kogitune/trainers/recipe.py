@@ -34,7 +34,7 @@ def parse_recipe(recipe: Union[list, str]):
                 items.append(dict(path=columns[0], ratio=float(columns[1])))
         elif isinstance(item, dict):
             items.append(item)
-    print('@', adhoc.dump(items))
+    adhoc.debug_print('@recipe', adhoc.dump(items))
     return items
 
 def prepare_recipe(recipe: Union[str, list], block_size, batch_size):

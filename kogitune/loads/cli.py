@@ -24,7 +24,6 @@ def model_cli(**kwargs):
             adhoc.print(f"[INPUT]\n{input}")
             adhoc.print(f"[OUTPUT]\n{output}")
 
-
 @adhoc.cli
 def texteval_cli(**kwargs):
     """

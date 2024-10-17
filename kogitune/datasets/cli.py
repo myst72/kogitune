@@ -65,7 +65,7 @@ def get_cli(**kwargs):
                     splitter.write(json.dumps(sample, ensure_ascii=False))
 
 @adhoc.cli
-def store_pack_cli(**kwargs):
+def store_cli(**kwargs):
     from concurrent.futures import ProcessPoolExecutor, as_completed
     from ..datasets.chunks import store
 

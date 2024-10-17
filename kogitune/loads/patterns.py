@@ -3,14 +3,29 @@ import re
 
 from .commons import *
 
-REPLACEMENT_MAP = {}
+PATTERN_MAP = {}
 
+class PatternLoader(adhoc.AdhocLoader):
 
-class Replacement(adhoc.AdhocObject):
-    def __init__(self, path=None, replaced="", kwargs=None):
-        self.path = path
-        self.replaced = replaced or "<URL>"
+    def load_from_map(self, path, kwargs):
+        pat = super().load_from_map(path, kwargs)
+        # if "fraction" in kwargs:
+        #     path, tag, kwargs = adhoc.parse_path(kwargs.pop("fraction"))
+        #     fraction = self.load(path, tag, **kwargs)
+        #     return FractionEval(texteval, fraction)
+        return pat
+
+PatternLoader(PATTERN_MAP).register("re|pattern")
+
+class Pattern(adhoc.AdhocObject):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # self.set_default_replaced("<URL>")
         self.pattern = self.compile(r"https?://[\w/:%#\$&\?~\.\,=\+\-\\_]+")
+
+    def set_default_replaced(self, replaced):
+        if self.tag == '':
+            self.tag = replaced
 
     def __call__(self, text: str) -> str:
         return self.replace(text)
@@ -18,64 +33,46 @@ class Replacement(adhoc.AdhocObject):
     def compile(self, *patterns: List[str], flags=0):
         return re.compile("|".join(patterns), flags=flags)
 
-    def replace(self, text: str) -> str:
-        return self.pattern.sub(self.replaced, text)
-
     def count_match(self, text: str) -> int:
         before = text.count("💣")
-        replaced = self.replace(text, "💣")
+        replaced = self.pattern.sub(text, "💣")
         return replaced.count("💣") - before
 
+    def replace(self, text: str) -> str:
+        return self.pattern.sub(self.tag, text)
+
     def __repr__(self):
-        return f"{self.path}#{self.replaced}"
+        return f"{self.path}#{self.tag}"
 
     def registor(self, names: str):
-        global REPLACEMENT_MAP
+        global PATTERN_MAP
         for name in adhoc.list_keys(names):
-            REPLACEMENT_MAP[name.lower()] = self.__class__
+            PATTERN_MAP[name.lower()] = self.__class__
 
 
-# class ComposeReplacement(adhoc.AdhocObject):
-#     def __init__(self, *replacements):
-#         self.replacements = replacements
+# class ComposePattern(adhoc.AdhocObject):
+#     def __init__(self, *Patterns):
+#         self.Patterns = Patterns
 
 #     def replace(self, text: str) -> str:
-#         for re in self.replacements:
+#         for re in self.Patterns:
 #             text = re.replace(text)
 #         return text
 
 #     def count_match(self, text: str) -> int:
 #         before = text.count("💣")
-#         for re in self.replacements:
+#         for re in self.Patterns:
 #             text = re.replace(text, "💣")
 #         return text.count("💣") - before
 
 #     def __repr__(self):
-#         return ":".join(f"{re}" for re in self.replacements)
+#         return ":".join(f"{re}" for re in self.Patterns)
 
-
-class ReplacementLoader(adhoc.AdhocLoader):
-
-    def load(self, path, tag, kwargs):
-        global REPLACEMENT_MAP
-        if "." in path:
-            cls = adhoc.load_class(path)
-            if not issubclass(cls, Replacement):
-                raise TypeError(f"{path} is not a subclass of replacement")
-            return cls(path, tag, kwargs)
-        if path in REPLACEMENT_MAP:
-            rep = REPLACEMENT_MAP[path](path, tag, kwargs)
-        else:
-            raise KeyError(path)
-        return rep
-
-
-ReplacementLoader().register("re")
 
 ## URL
 
 
-class reURL(Replacement):
+class patternURL(Pattern):
     """
     text 中のURLを<url>に置き換える
 
@@ -99,10 +96,9 @@ class reURL(Replacement):
 
     """
 
-    def __init__(self, path=None, replaced="", kwargs=None):
-        self.path = path
-        self.replaced = replaced or "<URL>"
-        self.pattern = self.compile(r"https?://[\w/:%#\$&\?~\.\,=\+\-\\_]+")
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.set_default_replaced('URL')
+        self.pattern = self.compile(r"https?://[\w/:%#\$&\?~\.\,=\+\-\\_]+")  # 結構, 適当
 
-
-reURL().registor("url")
+patternURL().registor("url")

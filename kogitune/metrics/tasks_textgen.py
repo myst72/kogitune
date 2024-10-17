@@ -1,6 +1,6 @@
-from ..loads import Model
 from ..loads.commons import *
-from .loads import Task
+from ..loads import Model
+from .tasks import Task
 
 class TextGeneration(Task):
 
@@ -25,7 +25,7 @@ class TextGeneration(Task):
         if self.chat_mode:
             input_texts = model.transform_messages(input_texts, heading=self.heading_messages)
             adhoc.verbose_print('[Chat Message]', dump=input_texts, once="chat_message")
-        gen_args = model.filter_gen_args(self.n, **self.init_kwargs)
+        gen_args = model.filter_gen_args(**self.init_kwargs)
         output_texts = model.generate(input_texts, self.progress_bar, **gen_args)
         self.update_kwargs(samples, _model=model.modeltag, _task=self.name)
         self.update_values(samples, {"_output": output_texts})
@@ -62,7 +62,7 @@ class CodeEval(TextGeneration):
         return ['pass@1']
 
     def calc(self, metric, samples: List[dict]):
-        from .metrics_python import openai_extract_code
+        from ..loads.metrics_python import openai_extract_code
 
         inputs = self.extract_values(samples, "_input")
         outputs = self.extract_values(samples, "_output")

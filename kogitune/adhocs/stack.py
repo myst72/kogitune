@@ -832,6 +832,15 @@ def load(scheme: str, path: str = None, /, **kwargs):
         return obj
     raise KeyError(scheme)
 
+def load_class(class_path, check=None):
+    import importlib
+    module_path, class_name = class_path.rsplit('.', 1)
+    module = importlib.import_module(module_path)
+    cls = getattr(module, class_name)
+    if check is not None:
+        if not issubclass(cls, check):
+            raise TypeError(f'{class_path} is not a subclass of {check.__name__}')
+    return cls
 
 class AdhocLoader(object):
 
@@ -840,6 +849,7 @@ class AdhocLoader(object):
 
     def load_from_path(self, path: str, /, kwargs):
         with kwargs_from_path(path, **kwargs) as kwargs:
+            path = kwargs['_path']
             path, kwargs = self.add_kwargs(path, kwargs)
             return self.load_from_map(path, kwargs)
 
@@ -860,6 +870,9 @@ class AdhocLoader(object):
         return loader_path.lower().replace('_', '').replace('-', '')
 
     def load_from_map(self, path, kwargs):
+        if path.startswith('class:') and '.' in path:
+            cls = load_class(path[6:])
+            return cls(**kwargs)
         loader_path = self.parse_loader_path(path, kwargs)
         if loader_path not in self.MAP:
             self.load_modules(path, kwargs)
