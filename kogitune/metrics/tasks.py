@@ -28,6 +28,7 @@ class Task(adhoc.AdhocObject):
         self.extra_prompt = adhoc.get(kwargs, 'extra_prompt|cot_prompt|=')
         if self.extra_prompt != '':
             self.extra_prompt = f'\n{self.extra_prompt}'
+        self.extractor = None
         self.progress_bar = adhoc.progress_bar()
         self.init_kwargs = {**kwargs}
 
@@ -45,21 +46,24 @@ class Task(adhoc.AdhocObject):
             self.progress_bar = adhoc.progress_bar()
 
     def prepare(self, samples: List[dict]):
-        template = None
-        for sample in samples:
-            if template is None:
-                if self.template is not None:
-                    template = self.template
-                else:
-                    template = self.guess_template(sample)
-                    if template:
-                        adhoc.verbose_print('[Inferred Template]', dump=template, once=True,
-                                            if_dislike={'template_config': repr("(template.json)")})
-                        self.template = template
-                        if self.shots > 0 and 'shots' in template:
-                            self.heading_messages = template['shots']
-                            self.set_few_shots()
+        if self.template is not None:
+            template = self.template
+        else:
+            template = self.guess_template(samples[0])
+            if template:
+                adhoc.verbose_print('[推論されたテンプレート]', dump=template, once=True,
+                    if_dislike={'template_config': repr("(template.json)")})
+                self.template = template
+        if template:
+            if self.shots > 0 and 'shots' in template and self.heading_messages is None:
+                self.heading_messages = template['shots']
+                self.set_few_shots()
+            if self.extractor is None:
+                if 'extract_pattern' in template:
+                    # FIXME url encodeが必要？
+                    self.extractor = adhoc.load('pattern', template['extract_pattern'])
 
+        for sample in samples:
             if template:
                 try:
                     self.apply_template(sample, template)

@@ -60,3 +60,17 @@ def test_eval_selfcheck():
             temperature=0.9,
             metric='editsim|jaccard',
         )
+
+def test_eval_mgsm():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        os.chdir(tmp_dir)
+        kogitune.cli.eval(
+            model_list=['kkuramitsu/chico-0.03b'], 
+            head=4,
+            test_run=2,
+            shots=4,
+            dataset='juletxara/mgsm?name=ja',
+            output_path='mgsm',
+            max_new_tokens=8,
+            metrics='exact_match',
+        )

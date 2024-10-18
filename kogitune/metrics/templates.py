@@ -42,6 +42,7 @@ def guess_template(sample: dict):
                     {'role': 'user', 'content': '問題：駐車場に3台の車があり、2台の車が到着するとしたら、駐車場には何台の車がありますか？'}, 
                     {'role': 'assistant', 'content': '5'},
                 ],
+                "extract_pattern": r"\D[0-9]+\D"
             }
         else:
             return {

@@ -837,6 +837,9 @@ class AdhocLoader(object):
         with kwargs_from_path(path, **kwargs) as kwargs:
             path = kwargs['_path']
             path, kwargs = self.add_kwargs(path, kwargs)
+            if path.startswith('class:') and '.' in path:
+                cls = load_class(path[6:])
+                return cls(**kwargs)
             return self.load_from_map(path, kwargs)
 
     def add_kwargs(self, path, kwargs):
@@ -856,9 +859,6 @@ class AdhocLoader(object):
         return loader_path.lower().replace('_', '').replace('-', '')
 
     def load_from_map(self, path, kwargs):
-        if path.startswith('class:') and '.' in path:
-            cls = load_class(path[6:])
-            return cls(**kwargs)
         loader_path = self.parse_loader_path(path, kwargs)
         if loader_path not in self.MAP:
             self.load_modules(path, kwargs)

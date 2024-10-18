@@ -31,6 +31,9 @@ class TextGeneration(Task):
     
     def calc(self, metric, samples: List[dict]):
         candidates = self.extract_values(samples, "_output")
+        if self.extractor:
+            candidates = [self.extractor.extract(c) for c in candidates]
+            print('@@', candidates)
         references = self.extract_values(samples, "_reference")
         results = metric.calc(candidates, references)
         self.update_values(samples, results)

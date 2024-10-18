@@ -100,12 +100,9 @@ class ExactMatch(Metric):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = "exact_match"
-        self.strict = kwargs.get("strict", True)
 
     def calc_s(self, candidate: str, reference: str) -> float:
-        if (self.strict and reference == candidate) or reference in candidate:
-            return 1.0
-        return 0.0
+        return 1.0 if reference == candidate else 0.0
 
 ExactMatch.register("exact_match|EM")
 

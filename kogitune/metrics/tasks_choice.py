@@ -46,7 +46,7 @@ class MIA(Task):
             return {
                 "text": f"{{{self.input_key}}}"
             }
-        return guess_template(sample)
+        return super().guess_template(sample)
         
     def apply_template(self, sample:dict, template:dict):
         if "prompt" in template and "reference" in template:
