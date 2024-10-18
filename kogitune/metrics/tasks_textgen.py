@@ -1,17 +1,14 @@
 from ..loads.commons import *
 from ..loads import Model
 from .tasks import Task
+from .templates import guess_template
 
 class TextGeneration(Task):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.chat_mode = True
-        self.n = 1
         self.name = f'{self.shots}-shot'
-
-    def guess_template(self, sample):
-        return guess_template(sample)
 
     def apply_template(self, sample:dict, template:dict):
         sample["_input"] = self.format(template, "prompt", sample)
@@ -21,14 +18,16 @@ class TextGeneration(Task):
         #     sample["_test"] = self.format(template, "test", sample)
 
     def eval(self, model:Model, samples: List[dict]):
-        input_texts = self.extract_values(samples, "_input")
+        prompts = self.extract_values(samples, "_input")
+        if self.extra_prompt:
+            prompts = [f"{prompt}{self.extra_prompt}" for prompt in prompts]
         if self.chat_mode:
-            input_texts = model.transform_messages(input_texts, heading=self.heading_messages)
-            adhoc.verbose_print('[Chat Message]', dump=input_texts, once="chat_message")
+            prompts = model.transform_messages(prompts, heading=self.heading_messages)
+            adhoc.verbose_print('[Chat Message]', dump=prompts, once="chat_message")
         gen_args = model.filter_gen_args(**self.init_kwargs)
-        output_texts = model.generate(input_texts, self.progress_bar, **gen_args)
+        output_texts = model.generate(prompts, self.progress_bar, **gen_args)
         self.update_kwargs(samples, _model=model.modeltag, _task=self.name)
-        self.update_values(samples, {"_output": output_texts})
+        self.update_values(samples, {"_prompt": prompts, "_output": output_texts})
     
     def calc(self, metric, samples: List[dict]):
         candidates = self.extract_values(samples, "_output")
@@ -101,94 +100,3 @@ class SelfCheckGPT(TextGeneration):
 
 SelfCheckGPT.register('selfcheck')
 
-
-def has_schema(data: dict, keys:str):
-    for key in keys.split('|'):
-        if key not in data:
-            return False
-    return True
-
-def contains_japanese(text: str) -> bool:
-    for char in text:
-        if '\u3040' <= char <= '\u30FF' or '\u4E00' <= char <= '\u9FFF' or '\uFF66' <= char <= '\uFF9D':
-            return True
-    return False
-
-def guess_template(sample: dict):
-    if has_schema(sample, 'instruction|input|output'):
-        # Alpaca形式
-        return {
-            "prompt": "{instruction}\n{input}",
-            "reference": "{output}",
-        }
-    if has_schema(sample, 'question|answer|answer_number|equation_solution'):
-        # MSGM形式
-        if contains_japanese(sample['question']):
-            return {
-                "prompt": "{question}\n(答)",
-                "reference": "{answer_number}",
-                "prompt_n": "{question}\n(答)",
-            }
-        else:
-            return {
-                "prompt": "{question}\n(Answer) ",
-                "reference": "{answer_number}",
-                "prompt_n": "{question}\n(Answer) ",
-            }
-    if has_schema(sample, 'prompt|test|entry_point|canonical_solution'):
-        # HumanEval
-        return {
-            "prompt": "{prompt}",
-            "reference": "{canonical_solution}\n",
-            "test": "\n{test}\n\ncheck({entry_point})\n",
-        }
-    if has_schema(sample, 'question|choice0|choice1|choice2|choice3|choice4|label'):
-        # JCommonSenseQA
-        return {
-            "shot": [
-                {"role": "user", "content": "日本一高い山は？"},
-                {"role": "assistant", "content": "Answer [0]"},
-            ],
-            "prompt": "{question}\n選択肢(Choice): [0] {choice0} [1] {choice1} [2] {choice2} [3] {choice3} [4] {choice4}\n",
-            "reference": "{label}",
-            "choice": ["0", "1", "2", "3", "4"],
-            "prompt_0": "{question}\n{choice0}",
-            "prompt_1": "{question}\n{choice1}",
-            "prompt_2": "{question}\n{choice2}",
-            "prompt_3": "{question}\n{choice3}",
-            "prompt_4": "{question}\n{choice4}",
-        }
-    if has_schema(sample, 'question|A|B|C|D|answer'):
-        # JMMLU
-        if contains_japanese(sample['question']):
-            return {
-                "prompt": "{question}\n選択肢(Choice): [A] {A} [B] {B} [C] {C} [D] {D}\n",
-                "reference": "{answer}",
-                "choice": ["A", "B", "C", "D"],
-                "choice_A": "{question}\n{A}",
-                "choice_B": "{question}\n{B}",
-                "choice_C": "{question}\n{C}",
-                "choice_D": "{question}\n{D}",
-            }
-        else:
-            return {
-                "prompt": "{question}\n(Choice): [A] {A} [B] {B} [C] {C} [D] {D}\n",
-                "reference": "{answer}",
-                "choice": ["A", "B", "C", "D"],
-                "choice_A": "{question}\n{A}",
-                "choice_B": "{question}\n{B}",
-                "choice_C": "{question}\n{C}",
-                "choice_D": "{question}\n{D}",
-            }
-    if has_schema(sample, 'text'):
-        # Kogitune 事前学習形式
-        return {
-            "prompt": "{text}",
-            "reference": "",
-        }
-    if has_schema(sample, 'prompt'):
-        # Kogitune 標準形式
-        return {
-            "prompt": "{prompt}",
-        }
-    return None

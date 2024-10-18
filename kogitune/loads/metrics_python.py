@@ -69,6 +69,13 @@ class PassAtK(Metric):
             scores.append((sum(passed)/n)*self.scale)
             result_passed.append(singlefy_if_single(passed))
             result_messages.append(singlefy_if_single(messages))
+        if self.k > 1:
+            # k を増やしたい人が修正すべき（by 🐼)
+            return {
+                f"{self.nametag}{suffix}": ('mean', [pass_at_k[self.nametag] * self.scale]),
+                f"{self.nametag}_passed{suffix}": result_passed, # エラー回避
+                f"{self.nametag}_result{suffix}": result_messages,
+            }
         return {
             f"{self.nametag}{suffix}": ('mean', scores),
             f"{self.nametag}_passed{suffix}": ('sum', result_passed),

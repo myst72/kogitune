@@ -1,5 +1,6 @@
 from ..loads.commons import *
 from ..loads import Model, Metric, LeaderBoard
+from .templates import guess_template
 
 ## base class
 
@@ -20,11 +21,14 @@ class Task(adhoc.AdhocObject):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.template = None
-        self.verbose = VerboseCounter(**kwargs)
-        self.progress_bar = adhoc.progress_bar()
+        self.template = adhoc.get(kwargs, 'template_config|template')
+        # self.verbose = VerboseCounter(**kwargs)
         self.shots = adhoc.get(kwargs, 'shots|shot|=0')
         self.heading_messages = adhoc.get(kwargs, 'heading_messages')
+        self.extra_prompt = adhoc.get(kwargs, 'extra_prompt|cot_prompt|=')
+        if self.extra_prompt != '':
+            self.extra_prompt = f'\n{self.extra_prompt}'
+        self.progress_bar = adhoc.progress_bar()
         self.init_kwargs = {**kwargs}
 
     @property
@@ -52,8 +56,8 @@ class Task(adhoc.AdhocObject):
                         adhoc.verbose_print('[Inferred Template]', dump=template, once=True,
                                             if_dislike={'template_config': repr("(template.json)")})
                         self.template = template
-                        if self.shots > 0 and 'shot_messages' in template:
-                            self.heading_messages = template['shot_messages']
+                        if self.shots > 0 and 'shots' in template:
+                            self.heading_messages = template['shots']
                             self.set_few_shots()
 
             if template:
@@ -68,7 +72,7 @@ class Task(adhoc.AdhocObject):
                 self.transform(sample)
 
     def guess_template(self, sample):
-        raise NotImplementedError()
+        return guess_template(sample)
     
     def set_few_shots(self):
         if self.heading_messages and self.shots > 0:

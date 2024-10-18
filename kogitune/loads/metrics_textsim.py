@@ -168,7 +168,7 @@ BLEU.register("bleu|blue")
 class SacreBLEU(Metric):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.name = f"(sacre)bleu"
+        self.name = f"sacrebleu"
         self.sacrebleu = adhoc.safe_import('sacrebleu')
         tokenizer_path = self.get(kwargs, "_subpath|tokenizer_path|tokenizer")
         if tokenizer_path:
@@ -194,19 +194,20 @@ def load_cosine_similarity():
     # コサイン類似度の計算
     return cosine_similarity
 
+
 class CosineSim(Metric):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.name = f"cosine"
+        self.name = f"embsim"
         self.torch = adhoc.safe_import('torch')
         self.model_path = self.get(kwargs, "_subpath|model_path|model|=sentence-transformers/all-MiniLM-L6-v2")
         self.model = None
-        self.cosine_sim = load_cosine_similarity()
+        self.cosine_similarity = load_cosine_similarity()
 
     def lazy_load(self):
         from transformers import AutoTokenizer, AutoModel
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
-        self.model = AutoModel.from_pretrained(self.model_path)
+        self.tokenizer = adhoc.load('_tokenizer', self.model_path)
+        self.model = adhoc.load('_model', self.model_path)
 
     def get_embedding(self, text):
         if self.model is None:
@@ -221,7 +222,7 @@ class CosineSim(Metric):
     def calc_s(self, candidate: str, reference: str) -> float:
         candidate = self.get_embedding(candidate)
         reference = self.get_embedding(reference)
-        return self.cosine_sim(candidate, reference)[0][0]
+        return self.cosine_similarity(candidate, reference)[0][0]
 
 CosineSim.register("embsim|vecsim")
 
@@ -286,6 +287,9 @@ class BERTScore(Metric):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = "BERTScore"
+        if "TOKENIZERS_PARALLELISM" not in os.environ:
+            os.environ["TOKENIZERS_PARALLELISM"] = "true"
+
         bert_score = adhoc.safe_import('bert_score')
         self.bert_score = bert_score.score
         self.model_path = adhoc.get(kwargs, "_subpath|model_type|model_path|model")
@@ -299,11 +303,13 @@ class BERTScore(Metric):
 
     def calc_m(self, candidates, references, n=1, suffix=''):
         P, R, F1 = self.bert_score(
-            candidates, references, 
+            candidates, 
+            references, 
             model_type=self.model_path,
             lang=self.lang, 
         )
         return {
+            f"{self.nametag}": self.flatten_mean(F1.numpy().tolist(), n),
             f"{self.nametag}_F1{suffix}": self.flatten_mean(F1.numpy().tolist(), n),
             f"{self.nametag}_Precision{suffix}": self.flatten_mean(P.numpy().tolist(),n),
             f"{self.nametag}_Recall{suffix}": self.flatten_mean(R.numpy().tolist(),n),

@@ -2,7 +2,6 @@ import math
 
 from ..loads.commons import *
 from .tasks import Task, Metric
-from .tasks_textgen import guess_template
 
 class QAChoice(Task):
 
@@ -10,9 +9,6 @@ class QAChoice(Task):
         super().__init__(**kwargs)
         self.name = 'choice'
         self.template = None
-
-    def guess_template(self, sample):
-        return guess_template(sample)
 
     def apply_template(self, sample:dict, template:dict):
         sample["_choice"] = template['choice']

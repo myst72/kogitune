@@ -247,6 +247,7 @@ class LeaderBoard(object):
     def pivot_table(self, samples:dict, name:str, aggfunc = 'mean', /, **kwargs):
         if isinstance(name, dict):
             results = name
+            result = None
             for name in results.keys():
                 aggfunc = None
                 if isinstance(results[name], str):
@@ -254,8 +255,8 @@ class LeaderBoard(object):
                 elif isinstance(results[name], tuple):
                     aggfunc = results[name][0]  # ('mean', scores) 形式
                 if aggfunc:
-                    self.pivot_table(samples, name, aggfunc, **kwargs)
-            return
+                    result = self.pivot_table(samples, name, aggfunc, **kwargs)
+            return result
         
         groupby = kwargs.get('groupby', kwargs.get('groupby', None))
         grouped_scores = self.get_grouped_scores(samples, name, groupby)
@@ -284,12 +285,13 @@ class LeaderBoard(object):
                     conditions.append(f'sample["{groupby}"] == "{group}"')
                 samples = RecordData.filter_samples(samples, conditions)
                 labels = RecordData.extract_labels(samples, label_query)
-                self.calc_auroc(value_name, scores, labels, record)
+                result = self.calc_auroc(value_name, scores, labels, record)
             else:
-                self.calc_aggfunc(value_name, aggfunc, scores, record)
+                result = self.calc_aggfunc(value_name, aggfunc, scores, record)
             adhoc.verbose_print(record)
             self.append_score(record)
             adhoc.saved(self.scorepath, "Record of score//スコアの保存先")
+        return result
 
     def get_grouped_scores(self, samples, name, groupby=None):
         group_scores = {}
@@ -319,11 +321,12 @@ class LeaderBoard(object):
         if 'sum' == aggfunc:
             self.update(record['model'], value_name, sum(scores))
             record['sum'] = sum(scores)
-            return
+            return record['sum']
         self.update(record['model'], value_name, np.mean(scores))
         record['mean'] = np.mean(scores)
         record_ci95(scores, record)
-    
+        return record['mean']
+        
     def calc_auroc(self, value_name, scores, labels, record):
         adhoc.safe_import('sklearn', 'scikit-learn')
         from sklearn.metrics import roc_curve, auc
@@ -340,6 +343,7 @@ class LeaderBoard(object):
             "FPR95": fpr95,
             "TPR05": tpr05,
         })
+        return auroc
 
     def show(self, transpose=True, width=32):
         if os.path.exists(self.tablepath):

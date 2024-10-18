@@ -1,4 +1,5 @@
 from .commons import *
+import numpy as np
 
 ## base class
 
@@ -53,7 +54,7 @@ class Metric(adhoc.AdhocObject):
     
     def calc_m(self, candidates:List[str], references:List[str], n=1, suffix='')->dict:
         scores = []
-        for candidate, reference in zip(listfy(candidates), listfy(references), strict=True):
+        for candidate, reference in zip(listfy(candidates), listfy(references)):
             scores.append(self.calc_s(candidate, reference))
         return {f"{self.nametag}{suffix}": ('mean', self.flatten_mean(scores, n))}
 

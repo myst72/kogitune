@@ -80,7 +80,7 @@ class Model(adhoc.AdhocObject):
         output_texts = []
         for input_text in self.listfy_prompt(input_texts):
             messages = heading[:]
-            messages.append(self.get_default_messages(input_text))
+            messages.extend(self.get_default_messages(input_text))
             output_texts.append(messages)
         return singlefy_if_single(output_texts)
 

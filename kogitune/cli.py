@@ -1,3 +1,4 @@
+import sys
 import kogitune.adhocs as adhoc
 
 from .adhocs.modules import (
@@ -26,14 +27,10 @@ from .metrics.cli import (
     leaderboard_cli as leaderboard,
 )
 
-def main(subcommand=None, /, **kwargs):
-    if subcommand is None:
-        with adhoc.kwargs_from_main(use_subcommand=True, **kwargs) as kwargs:
-            subcommand = kwargs["subcommand"]
-            adhoc.load('cli', subcommand, **kwargs)
-    else:
-        with adhoc.kwargs_from_stacked(**kwargs) as kwargs:
-            adhoc.load('cli', subcommand, **kwargs)
+def main():
+    with adhoc.kwargs_from_main(sys.argv, use_subcommand=True) as kwargs:
+        subcommand = kwargs.pop("subcommand")
+        adhoc.load('cli', subcommand, **kwargs)
 
 if __name__ == "__main__":
     main()

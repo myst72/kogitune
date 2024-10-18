@@ -144,17 +144,6 @@ class ChainMap(object):
             if self.errors == "strict":
                 raise TypeError(f"{unused_keys} is an unused keyword at {self.caller}")
 
-    # def saved(self, filepath: str, desc:str='', rename_from=None):
-    #     if filepath not in [file for file, _ in self.saved_files]:
-    #         self.saved_files.append((filepath, desc))
-
-    # def report_saved_files(self):
-    #     if len(self.saved_files) == 0:
-    #         return
-    #     width = max(len(filepath) for filepath, _ in self.saved_files) + 8
-    #     for filepath, desc in self.saved_files:
-    #         adhoc_print(colored(filepath.ljust(width), "blue"), desc)
-
     def lazy(self, key, message):
         if not hasattr(self, 'lazy_message'):
             self.lazy_message = {}
@@ -291,7 +280,7 @@ def kwargs_from_stacked(caller_frame=None, /, **kwargs) -> ChainMap:
     stacked = get_stacked()
     if caller_frame is None:
         caller_frame = inspect.stack()[1].function
-    kwargs.pop('open_file', None) # 余分なキーを消す
+    kwargs.pop('caller_frame', None) # 余分なキーを消す
     return ChainMap(kwargs, parent=stacked, caller=caller_frame)
 
 
@@ -483,8 +472,6 @@ def list_values(values: Any, map_fn=str):
         return [map_fn(x) for x in values.split(",")]
     return [values]
 
-
-
 def edit_distance(s1, s2):
     if len(s1) < len(s2):
         return edit_distance(s2, s1)
@@ -561,7 +548,7 @@ def get_adhoc(dic: dict,
             value = parse_key_value(default_key, key[1:])
             adhoc_print(
                 f"`{default_key}` is missing. Confirm the default"
-                f"///`{default_key}`が設定されてないよ. 確認して",
+                f"//`{default_key}`が設定されてないよ. 確認して",
                 f"{default_key}={repr(value)}."
             )
         elif key in dic:
@@ -741,13 +728,12 @@ def parse_argv(argv: List[str], expand_config="config"):
     return args
 
 
-def kwargs_from_main(use_subcommand=False, expand_config="config", /, **kwargs):
-    import sys
-    if use_subcommand and len(sys.argv) > 1:
-        args = parse_argv(sys.argv[2:], expand_config=expand_config)
-        args["subcommand"] = sys.argv[1]
+def kwargs_from_main(argv: List[str], use_subcommand=False, expand_config="config"):
+    if use_subcommand and len(argv) > 1:
+        args = parse_argv(argv[2:], expand_config=expand_config)
+        args["subcommand"] = argv[1]
     else:
-        args = parse_argv(sys.argv[1:], expand_config=expand_config)
+        args = parse_argv(argv[1:], expand_config=expand_config)
     return ChainMap(args, get_stacked(), caller='main')
 
 ## kwargs
