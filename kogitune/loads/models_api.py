@@ -59,51 +59,90 @@ class BedrockModel(Model):
         super().__init__(**kwargs)
         self.model_path = adhoc.get(kwargs, "_subpath|model_path|model")
         boto3 = adhoc.safe_import('boto3')
+        # self.client = boto3.client(
+        #     service_name='bedrock-runtime', 
+        #     region_name=adhoc.get(kwargs, 'region_name|=us-west-2')
+        # )
         self.client = boto3.client(
-            service_name='bedrock-runtime', 
-            region_name=adhoc.get(kwargs, 'region_name|=us-west-2')
+            'bedrock-runtime',
+            region_name=adhoc.get(kwargs, "_region_name|region_name|AWS_REGION"),
+            aws_secret_access_key=adhoc.get(kwargs, "_aws_secret_access_key|aws_secret_access_key|secret_key|AWS_SECRET_KEY"),
+            aws_access_key_id=adhoc.get(kwargs, "_aws_access_key_id|aws_access_key_id|access_key|AWS_ACCESS_KEY"),
         )
 
     def supported_gen_args(self) -> List[str]:
         return [
             "_max_tokens|max_tokens|max_new_tokens|=256",
-            "_n|n|num_return_sequences",
+            # "_n|n|num_return_sequences", # サポートされていない
             "temperature",
-            "top_p",
+            # "top_p",
+            # "top_k",
+            # "stop_sequences",
         ]
 
     def generate_s(self, input_text: Union[List, str], /, **kwargs):
-        gen_args = self.filter_gen_args(kwargs)
+        gen_args = self.filter_gen_args(**kwargs)
 
-        if isinstance(input_text, str):
+        # Create a Text Completion -> Legacy code
+        # if isinstance(input_text, str): 
+        #     response = self.client.invoke_model(
+        #         modelId=self.model_id,
+        #         body=json.dumps({
+        #             "anthropic_version": "bedrock-2023-05-31",
+        #             "prompt": input_text,
+        #             **gen_args,
+        #         }),
+        #         contentType='application/json'
+        #     )
+        #     # レスポンスの読み取り
+        #     response_body = response['body'].read().decode('utf-8')
+        #     response_json = json.loads(response_body)
+        #     generated_text = response_json.get('completion', '')
+        #     return generated_text
+        # else:
+        #     response = self.client.invoke_model(
+        #         modelId=self.model_path, 
+        #         body=json.dumps({
+        #             "anthropic_version": "bedrock-2023-05-31",
+        #             "messages": input_text
+        #             **gen_args
+        #         }), 
+        #         accept='application/json', 
+        #         contentType='application/json'
+        #     )
+        #     response_body = json.loads(response.get('body').read())
+        #     output_text = response_body["content"][0]["text"]
+        #     return output_text
+
+        if isinstance(input_text, str): 
             response = self.client.invoke_model(
-                modelId=self.model_id,
+                modelId=self.model_path,
                 body=json.dumps({
                     "anthropic_version": "bedrock-2023-05-31",
-                    "prompt": input_text,
-                    **gen_args,
+                    "messages": [{"role": "user","content": [{"type": "text", "text": input_text}],}],
+                    **gen_args
                 }),
-                contentType='application/json'
+                accept = 'application/json',
+                contentType='application/json',
             )
-            # レスポンスの読み取り
-            response_body = response['body'].read().decode('utf-8')
-            response_json = json.loads(response_body)
-            generated_text = response_json.get('completion', '')
-            return generated_text
+            model_response = json.loads(response["body"].read())    
+            response_text = model_response["content"][0]["text"]
+            return response_text
         else:
             response = self.client.invoke_model(
-                modelId=self.model_path, 
+                modelId=self.model_path,
                 body=json.dumps({
                     "anthropic_version": "bedrock-2023-05-31",
-                    "messages": input_text
+                    "messages": [input_text],
                     **gen_args
-                }), 
-                accept='application/json', 
-                contentType='application/json'
+                }),
+                accept = 'application/json',
+                contentType='application/json',
             )
-            response_body = json.loads(response.get('body').read())
-            output_text = response_body["content"][0]["text"]
-            return output_text
+            model_response = json.loads(response["body"].read())
+            response_text = model_response["content"][0]["text"]
+            return response_text
+
 
 BedrockModel.regiser("anthropic")
 
