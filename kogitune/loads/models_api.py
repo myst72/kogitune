@@ -192,3 +192,41 @@ BedrockModel.regiser("anthropic")
 #         response = self.bedrock.invoke_model(body=body, modelId=self.model_path)
 #         response_body = json.loads(response.get("body").read())
 #         return response_body.get("completion")
+
+class GoogleModel(Model):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.model_path = adhoc.get(kwargs, "_subpath|model_path|model")
+        self.genai = adhoc.safe_import('google.generativeai', 'google-generativeai') #引数1:import, 引数2:pip
+        api_key = adhoc.get(kwargs, "api_key|GOOGLE_API_KEY|!!")
+        try:
+            self.client = self.genai.configure(api_key=api_key)
+        except BaseException as e:
+            adhoc.print('環境変数 GOOGLE_API_KEY を設定してね', repr(e))
+            adhoc.exit(throw=e)
+
+
+    def supported_gen_args(self) -> List[str]: # defaultの値はモデルによって異なる
+        return [
+            "_candidate_count|candidate_count|n|num_return_sequences|=1", 
+            "_max_output_tokens|max_output_tokens|max_tokens|max_new_tokens|=256",
+            "temperature|=0.0",
+            # "_topK|",
+            # "_topP|=0.95",
+            # "_stop_sequences|",
+        ]
+    
+    def generate_s(self, input_text: Union[List, str], /, **kwargs):
+        gen_args = self.filter_gen_args(**kwargs)
+        model = self.genai.GenerativeModel(self.model_path)
+
+        if isinstance(input_text, str): #input_textがstr型の場合->textversion
+            response = model.generate_content(
+                input_text,
+                generation_config = self.genai.GenerationConfig(
+                    **gen_args
+                )
+            )
+            return response.text
+
+GoogleModel.regiser("google")
