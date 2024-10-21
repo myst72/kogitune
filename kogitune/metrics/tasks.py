@@ -10,6 +10,7 @@ class TaskLoader(adhoc.AdhocLoader):
 
     def load_modules(self, path, kwargs):
         from .tasks_textgen import TextGeneration
+        from .tasks_code import CodeEval
         from .tasks_choice import QAChoice
 
 TaskLoader(TASK_MAP).register("task")

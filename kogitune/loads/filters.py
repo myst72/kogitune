@@ -1,22 +1,50 @@
-from typing import Optional, List, Union, Any
 import json
 
 from .commons import *
 
 FILTER_MAP = {}
 
+class TextFilterLoader(adhoc.AdhocLoader):
+
+    def load_from_map(self, path, kwargs):
+        global FILTER_MAP
+        if path.endswith(".json"):
+            ## TODO
+            return load_filter_config(path, **kwargs)
+        return super().load_from_map(path, kwargs)
+    
+    def load_default(self, path, kwargs):
+        try:
+            print("@maxmin", kwargs)
+            filter = MaxMinFilter(**kwargs)
+            return filter
+        except KeyError:
+            pass
+        return super().load_default(path, kwargs)
+
+TextFilterLoader(FILTER_MAP).register("filter")
 
 class TextFilter(adhoc.AdhocObject):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.pathargs = {}
         self.target = self.get(kwargs, "target|text_key|=text")
+        self.pathargs = {}
 
     def filter(self, sample: dict) -> Optional[dict]:
+        sample[self.target] = self.filter_text(sample[self.target])
         return sample
 
-    def __call__(self, sample: dict):
-        return self.filter(sample)
+    def filter_text(self, text:str) -> Optional[str]:
+        return text
+
+    def __call__(self, iterable):
+        for sample in iterable:
+            if self.filter(sample):
+                yield sample
+
+    def filter_list(self, samples:List[dict]):
+        return [sample for sample in samples if self.filter(sample)]
+
 
     def encode_as_json(self):
         return self.encode_path()
@@ -33,36 +61,6 @@ class TextFilter(adhoc.AdhocObject):
             FILTER_MAP[name] = cls
 
 
-class TextFilterLoader(adhoc.AdhocLoader):
-
-    def load_from_map(self, path, kwargs):
-        global FILTER_MAP
-        path, _, subpath = path.partition(":")
-        if path.endswith(".json"):
-            ## TODO
-            return load_filter_config(path, **kwargs)
-        if "." in path:
-            func = adhoc.load_class(path)
-            if not issubclass(func, TextFilter):
-                raise TypeError(f"{path} is not a subclass of TextEval")
-            return func(path, subpath, kwargs)
-        path = path.lower().replace("_", "-")
-        if path in FILTER_MAP:
-            filter = FILTER_MAP[path](path, subpath, kwargs)
-            return filter
-        try:
-            subpath = f"{path}:{subpath}"
-            print("@subpath", subpath)
-            filter = MaxMinFilter(path, subpath, kwargs)
-            return filter
-        except KeyError:
-            pass        
-        raise KeyError(path)
-
-
-TextFilterLoader(FILTER_MAP).register("filter")
-
-
 @adhoc.from_kwargs
 def filter_from_kwargs(**kwargs):
     filter = kwargs.pop("filter", None)
@@ -73,18 +71,74 @@ def filter_from_kwargs(**kwargs):
     return filter
 
 
+class MaxMinFilter(TextFilter):
+    """
+    評価関数の最大値と最小値からフィルターする
+    """
+
+    def __init__(self, **kwargs):
+        """
+        評価関数フィルタを作る
+        """
+        super().__init__(**kwargs)
+        self.get(
+            kwargs,
+            "max_inclusive|max",
+            "min_inclusive|min",
+            "max_exclusive", "min_exclusive",
+        )
+        path = adhoc.get(kwargs, '_subpath|_path')
+        self.texteval = adhoc.load("texteval", path, **kwargs)
+        self.record_key = self.texteval.path
+        self.path = f'maxmin:{path}'
+
+    def filter(self, sample: dict) -> Optional[str]:
+        text = sample[self.target]
+        value = self.texteval(text)
+        if self.min_inclusive and self.min_inclusive > value:
+            return None
+        if self.max_inclusive and self.max_inclusive < value:
+            return None
+        if self.min_exclusive and self.min_exclusive >= value:
+            return None
+        if self.min_exclusive and self.min_exclusive <= value:
+            return None
+        sample[self.record_key] = round(value, 4)
+        return sample
+
+MaxMinFilter.register("maxmin|max|min")
+
+class ContainsFilter(TextFilter):
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        path = adhoc.get(kwargs, '_subpath|_path')
+        self.pattern = adhoc.load("pattern", path, **kwargs)
+        self.path = f'contains:{path}'
+
+    def filter(self, sample: dict) -> Optional[str]:
+        text = sample[self.target]
+        if self.pattern.contains(text):
+            return sample
+        return None
+
+ContainsFilter.register('contains')
+
+
+## Composition
+
 class CompositeFilter(TextFilter):
     """
     テキストフィルタを合成する
     :param filters:
     """
 
-    def __init__(self, path, subpath, kwargs):
+    def __init__(self, **kwargs):
         """
         評価関数フィルタを作る
         """
-        super().__init__("compose", subpath, kwargs)
-        self.filters = kwargs.get("filters", [])
+        super().__init__(**kwargs)
+        self.filters = adhoc.get(kwargs, "filters", [])
 
     def encode_as_json(self):
         return {
@@ -93,16 +147,14 @@ class CompositeFilter(TextFilter):
             "kwargs": self.pathargs,
         }
 
-    def __call__(self, sample: dict) -> Optional[dict]:
+    def filter(self, sample: dict) -> Optional[dict]:
         for filter in self.filters:
             text = filter(dict)
             if text is None:
                 return None
         return sample
 
-
 CompositeFilter.register("compose")
-
 
 def generate_filter(config: dict, kwargs):
     if isinstance(config, dict):
@@ -122,42 +174,3 @@ def load_filter_config(config_file, **kwargs):
         config = json.load(f)
         return generate_filter(config, kwargs)
 
-
-class MaxMinFilter(TextFilter):
-    """
-    評価関数の最大値と最小値からフィルターする
-    """
-
-    def __init__(self, **kwargs):
-        """
-        評価関数フィルタを作る
-        """
-        super().__init__(**kwargs)
-        self.get(
-            kwargs,
-            "max_inclusive|max",
-            "min_inclusive|min",
-        )
-        self.texteval = adhoc.load("texteval", kwargs['_subpath'], **kwargs)
-        self.record_key = self.texteval.path
-
-    def filter(self, sample: dict) -> Optional[str]:
-        text = sample[self.target]
-        value = self.texteval(text)
-        if self.min_inclusive and self.min_inclusive > value:
-            # adhoc.print(
-            #     f"[DROP] {value} < min={self.min_inclusive} {repr(text)}",
-            #     watch=self.record_key,
-            # )
-            return None
-        if self.max_inclusive and self.max_inclusive < value:
-            # adhoc.print(
-            #     f"[DROP] {value} > max={self.max_inclusive} {repr(text)}",
-            #     watch=self.record_key,
-            # )
-            return None
-        sample[self.record_key] = round(value, 4)
-        return sample
-
-
-MaxMinFilter.register("maxmin|max|min")

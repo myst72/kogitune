@@ -1,7 +1,6 @@
 from ..loads.commons import *
 from ..loads import Model
 from .tasks import Task
-from .templates import guess_template
 
 class TextGeneration(Task):
 
@@ -41,40 +40,6 @@ class TextGeneration(Task):
 
 TextGeneration.register('|generation|0-shot|few-shots')
 
-class CodeEval(TextGeneration):
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.n = adhoc.get(kwargs, 'num_return_sequences|n|=1')
-        self.chat_mode = False
-
-    def apply_template(self, sample:dict, template:dict):
-        sample["_input"] = self.format(template, "prompt", sample)
-        sample["_reference"] = self.format(template, "reference", sample)
-        sample["_test"] = self.format(template, "test", sample)
-
-    def merge(self, heads: List[str], tails: List[List[str]], merge_fn):
-        merged_list = []
-        for head, tail in zip(heads, tails):
-            merged_list.append([merge_fn(head, x) for x in listfy(tail)])
-        return merged_list
-
-    @property
-    def default_metrics():
-        return ['pass@1']
-
-    def calc(self, metric, samples: List[dict]):
-        from ..loads.metrics_python import openai_extract_code
-
-        inputs = self.extract_values(samples, "_input")
-        outputs = self.extract_values(samples, "_output")
-        candidates = self.merge(inputs, outputs, openai_extract_code)
-        testcases = self.extract_values(samples, "_test")
-        results = metric.calc(candidates, testcases)
-        self.update_values(samples, results)
-        return results
-
-CodeEval.register("code_eval|pass@1|pass@k")
 
 class SelfCheckGPT(TextGeneration):
 

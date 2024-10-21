@@ -1,73 +1,60 @@
-import numpy as np
-import torch
 
-from .commons import adhoc
-from .recipe import DatasetRecipe
-from .gpus import *
-from .logging import load_wandb
+from ..loads.commons import adhoc
 
-def get_trainer_args(**kwargs):
-    from transformers import TrainingArguments
+def pretrain(**kwargs):
+    from .trainer_args import (
+        check_batch_size, check_resume_step, check_gpus, 
+        get_pretrain_args
+    )
+    from transformers import Trainer
+    from .recipe import DatasetRecipe
+    from .callbacks import load_callbacks
+    from .logging import wandb_init
 
-    with adhoc.kwargs_from_stacked(**kwargs) as aargs:
-        global_batch_size = adhoc.get(kwargs, "global_batch_size|batch_size|=1024")
-        device_batch_size = adhoc.get(kwargs, "device_batch_size|=16")
-        gas = global_batch_size // device_batch_size
-        adhoc.print(
-            f"batch_size global={global_batch_size} device={device_batch_size} gradient_accumulation_steps={gas}"
+    with wandb_init(kwargs):
+        model = adhoc.load("_model", adhoc.get(kwargs, "model_path|model|!!"), **kwargs)
+        tokenizer = load_train_tokenizer(**kwargs)
+        save_path = adhoc.get(kwargs, "save_path|!model")
+
+        batch_size = check_batch_size(kwargs, default_batch_size=1024)
+        block_size = adhoc.get(kwargs, 'block_size|max_length|max_seq_length|!512')
+        dataset = DatasetRecipe(adhoc.get(kwargs, "recipe|url_list|!!"), 
+                                batch_size=batch_size, 
+                                block_size=block_size)
+        resume_step = check_resume_step(kwargs)
+        dataset.skip(resume_step * batch_size)
+
+        check_gpus(kwargs)
+        trainer_args = get_pretrain_args(**kwargs)
+
+        trainer = Trainer(
+            model=model,
+            data_collator = get_collator(tokenizer),
+            train_dataset=dataset,
+            args=trainer_args,
+            callbacks=load_callbacks(**kwargs),
         )
-        overwrite_output_dir = "resume_from_checkpoint" not in aargs
-        bf16_enabled = adhoc.get(kwargs, f"bf16|={bf16_is_available()}")
-        fp16_enabled = False
-        optim = "adamw_torch"
-        if torch.cuda.is_available():
-            if not bf16_enabled:
-                fp16_enabled = True
-            optim = "adamw_torch_fused"
-        train_args = dict(
-            output_dir=adhoc.get(kwargs, "output_dir|=output"),
-            overwrite_output_dir=adhoc.get(kwargs, 
-                f"overwrite_output_dir|={overwrite_output_dir}"
-            ),
-            per_device_train_batch_size=adhoc.get(kwargs, 
-                f"per_device_train_batch_size|={device_batch_size}"
-            ),
-            gradient_accumulation_steps=adhoc.get(kwargs, 
-                f"gradient_accumulation_steps|={gas}"
-            ),
-            # per_device_eval_batch_size=64,
-            auto_find_batch_size=adhoc.get(kwargs, 
-                "auto_find_batch_size|=False"
-            ),  # バッチサイズ自動
-            do_eval=adhoc.get(kwargs, "do_eval|=False"),
-            # evaluation_strategy='steps',
-            # eval_steps=50,
-            optim=adhoc.get(kwargs, f"optim|={optim}"),
-            learning_rate=adhoc.get(kwargs, "learning_rate|=4e-4"),
-            weight_decay=adhoc.get(kwargs, "weight_decay|=0.1"),
-            adam_beta1=adhoc.get(kwargs, "adam_beta1|=0.9"),
-            adam_beta2=adhoc.get(kwargs, "adam_beta2|=0.999"),
-            adam_epsilon=adhoc.get(kwargs, "adam_epsilon|=1e-8"),
-            max_grad_norm=adhoc.get(kwargs, "max_grad_norm|=1.0"),
-            num_train_epochs=adhoc.get(kwargs, "num_train_epochs|=2"),
-            max_steps=adhoc.get(kwargs, "max_steps|=-1"),
-            lr_scheduler_type=adhoc.get(kwargs, "lr_scheduler_type|=cosine"),
-            logging_steps=adhoc.get(kwargs, "logging_steps|=10"),
-            dataloader_pin_memory=False,
-            save_steps=adhoc.get(kwargs, "save_steps|=1000"),
-            save_total_limit=adhoc.get(kwargs, "save_total_limit"),
-            save_only_model=adhoc.get(kwargs, "save_only_model|=False"),
-            neftune_noise_alpha=adhoc.get(kwargs, "neftune_noise_alpha"),
-            torch_compile=adhoc.get(kwargs, "torch_compile|=False"),
-            bf16=bf16_enabled,
-            fp16=fp16_enabled,
-        )
-        # adhoc.setlog('train', trainer_args=train_args)
-        return TrainingArguments(**train_args)
+        resume_from_checkpoint = adhoc.get(kwargs, "resume_from_checkpoint|=False")
+        result = trainer.train(resume_from_checkpoint=resume_from_checkpoint)
+
+        adhoc.verbose_print('トレーニング完了', dump=result)
+        save_path = adhoc.get(kwargs, "save_path|!model")
+        if save_path:
+            model.save_pretrained(save_path)
+            tokenizer.save_pretrained(save_path)
+        return result
+
+def load_train_tokenizer(**kwargs):
+    tokenizer = adhoc.load("_tokenizer", adhoc.get(kwargs, "tokenizer_path|model_path|model|!!"))
+    if not hasattr(tokenizer, 'pad_token_id'):
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+    return tokenizer
 
 def get_collator(tokenizer):
     from transformers import DataCollatorForLanguageModeling
     return DataCollatorForLanguageModeling(
-        tokenizer, pad_to_multiple_of=8, mlm=False
+        tokenizer, 
+        pad_to_multiple_of=8, 
+        mlm=False
     )
 

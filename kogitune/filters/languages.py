@@ -2,7 +2,7 @@ import sys
 import re
 from collections import Counter
 from .filters import TextFilter, adhoc
-from .documents import chunk_text
+from ..loads.filters_docs import chunk_text
 
 # languages that require word segmentation
 
@@ -2382,6 +2382,8 @@ def detect_lang(
     found_lang_list = list(set(found_lang_list))
     found_lang_list.sort()
     return found_lang_list
+
+
 
 
 class LangSetFilter(TextFilter):

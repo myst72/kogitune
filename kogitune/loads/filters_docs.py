@@ -1,40 +1,35 @@
-from typing import Optional
+from .commons import *
+from .filters import TextFilter, CompositeFilter
 import unicodedata
-from .filters import TextFilter, ComposeFilter, adhoc
 
 class UnicodeNormalization(TextFilter):
     """
     Unicode正規化フィルターする
     """
-    def __init__(self, *args, **kwargs):
+    def __init__(self, **kwargs):
         """
         Unicode正規化フィルタを作る
         """
-        super().__init__(*args, **kwargs)
-        adhoc.kwargs_from_stacked(**kwargs).record(
-            'form|=NFKC',
-            field=self, dic=self.rec,
-        )
-
-    def __call__(self, text: str, record: dict) -> Optional[str]:
-        return unicodedata.normalize(self.form, text)
+        super().__init__(**kwargs)
+        self.get(kwargs, 'unicode_form|for|=NFKC')
+        
+    def filter_text(self, text:str) -> Optional[str]:
+        return unicodedata.normalize(self.unicode_form, text)
 
 class DuplicatedLineFilter(TextFilter):
     """
     重複した行を取り除く
     """
-    def __init__(self, *args, **kwargs):
+    def __init__(self, **kwargs):
         """
         重複した行を取り除くフィルタを作る
         :param prefix_length: 重複をチェックする先頭の文字数
         """
-        super().__init__(*args, **kwargs)
-        adhoc.kwargs_from_stacked(**kwargs).record(
-            'prefix_length|=8',
-            field=self, dic=self.rec,
-        )
+        super().__init__(**kwargs)
+        super().__init__(**kwargs)
+        self.get(kwargs, 'prefix_length|=8')
 
-    def __call__(self, text: str, record: dict) -> Optional[str]:
+    def filter_text(self, text: str) -> Optional[str]:
         lines = ['']
         for line in text.split('\n'):
             prev = lines[-1]

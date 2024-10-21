@@ -210,9 +210,7 @@ class WordCount(TextEval):
     def eval(self, text: str) -> int:
         return len(self.pattern.findall(text))
 
-
 WordCount.register("word-count|word")
-
 
 class WordFraction(TextEval):
     def __init__(self, **kwargs) -> None:
@@ -227,6 +225,8 @@ class WordFraction(TextEval):
 
 
 WordFraction.register("word-fraction")
+
+
 
 
 class ModelLoss(TextEval):

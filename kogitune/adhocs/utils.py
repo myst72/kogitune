@@ -86,15 +86,15 @@ class start_timer(object):
         pass
 
 
-def describe_counters(
-    counters, caption, output_file, columns=["Item", "Count", "%"], head=20
-):
-    import pandas as pd
+# def describe_counters(
+#     counters, caption, output_file, columns=["Item", "Count", "%"], head=20
+# ):
+#     import pandas as pd
 
-    df = pd.DataFrame.from_dict(counters, orient="index").reset_index()
-    df.columns = columns[:2]
-    total_count = df[columns[1]].sum()
-    df[columns[2]] = (df[columns[1]] / total_count) * 100
-    df[columns[2]] = df[columns[2]].round(3)
-    adhoc_print(df.head(head), face="")
-    adhoc_print(f"{caption} See {output_file}")
+#     df = pd.DataFrame.from_dict(counters, orient="index").reset_index()
+#     df.columns = columns[:2]
+#     total_count = df[columns[1]].sum()
+#     df[columns[2]] = (df[columns[1]] / total_count) * 100
+#     df[columns[2]] = df[columns[2]].round(3)
+#     adhoc_print(df.head(head), face="")
+#     adhoc_print(f"{caption} See {output_file}")

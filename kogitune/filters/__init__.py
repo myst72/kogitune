@@ -14,7 +14,7 @@ from .languages import (
     LangSetFilter, langset,
 )
 
-from .documents import (
+from ..loads.filters_docs import (
     UnicodeNormalization, DuplicatedLineFilter,
     LineByLineFilter, 
 )

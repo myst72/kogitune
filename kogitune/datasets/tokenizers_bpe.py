@@ -1,5 +1,4 @@
-from typing import List
-from .commons import adhoc
+from ..loads.commons import *
 
 EOS_TOKEN = "</s>"
 EOS_ID = 0
@@ -17,7 +16,6 @@ VOCAB = [
     ("\n", -0.01),  # 改行
 ]
 
-@adhoc.cli
 def train_bpe(files:List[str], save_path:str, **kwargs):
     tokenizers = adhoc.safe_import('tokenizers')
     from tokenizers import Tokenizer, models, pre_tokenizers, trainers, decoders
@@ -41,7 +39,7 @@ def train_bpe(files:List[str], save_path:str, **kwargs):
         special_tokens=SPECIAL_TOKENS,
     )
     with adhoc.start_timer() as timer:
-        adhoc.notice("BPEモデルの訓練を始めます", options=kwargs)
+        adhoc.print("BPEモデルの訓練を始めます", options=kwargs)
         # トークナイザーのトレーニング
         tokenizer.train(files, trainer)
         timer.notice("お疲れ様です。")
@@ -67,7 +65,6 @@ def save_tokenizer(tokenizer, save_path, text="🦊 token化、大丈夫？"):
     print(len(encoded), encoded)
     decoded = fast_tokenizer.decode(encoded)
     print(decoded)
-
 
 
 def display_token_fraction(files, save_path):

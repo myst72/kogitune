@@ -30,5 +30,21 @@ def test_pretrain():
             model_path='kkuramitsu/chico-0.03b',
             save_path='pretrain',
             max_steps=2,
+            use_wandb=False,
         )
         assert os.path.isdir('pretrain')
+
+def test_pretrain_recipe():
+    from kogitune.trainers.recipe import DatasetRecipe
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        os.chdir(tmp_dir)
+        url_list = [
+            "https://papertown-jwu.s3.ap-northeast-1.amazonaws.com/llm-jp-915a/mc4ja_line",
+            "https://papertown-jwu.s3.ap-northeast-1.amazonaws.com/llm-jp-915a/pythondoc_def",
+            "https://papertown-jwu.s3.ap-northeast-1.amazonaws.com/llm-jp-915a/python",
+            "https://papertown-jwu.s3.ap-northeast-1.amazonaws.com/llm-jp-915a/markdownpyedu",
+        ]
+        dataset = DatasetRecipe(url_list, batch_size=1024, block_size=512)
+        for i in range(100):
+            print(dataset[i])
+

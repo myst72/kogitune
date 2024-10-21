@@ -60,3 +60,12 @@ def test_adhoc_dummy_tqdm():
             for n in range(10):
                 pbar.update(1)
 
+
+
+def test_adhoc_format_unit():
+    with adhoc.start_timer() as timer:
+        for i in range(16):
+            print(adhoc.format_unit(10*i, scale=1000))
+            print(adhoc.format_unit(10*i, scale=60))
+            print(adhoc.format_unit(10*i, scale=1024))
+        timer.notice('?')

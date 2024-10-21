@@ -11,6 +11,7 @@ from .loads.cli import (
 )
 
 from .datasets.cli import (
+    train_bpe_cli as train_bpe,
     add_vocab_cli as add_vocab,
     get_cli as get,
     get_cli as get_split,

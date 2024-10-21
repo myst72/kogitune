@@ -1,4 +1,4 @@
-from typing import List, Union, Any
+from typing import List, Union, Any, Optional
 import kogitune.adhocs as adhoc
 
 from .files import os, basename, zopen, safe_makedirs, write_config, read_config, join_name
