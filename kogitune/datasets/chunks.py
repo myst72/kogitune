@@ -151,13 +151,13 @@ def download_file_async(url):
         cmd = f"aws s3 cp {url} {temp_file} && mv {temp_file} {local_file}"
     else:
         cmd = f"wget -qO {temp_file} {url} && mv {temp_file} {local_file}"
-    print("@", os.path.exists(local_file), cmd)
+    #print("@", os.path.exists(local_file), cmd)
     try:
         # subprocess.runでコマンドを実行し、エラー時に例外を発生させる
         subprocess.run(f"{cmd} &", shell=True, check=True, stderr=subprocess.PIPE)
     except subprocess.CalledProcessError as e:
         # エラーをExceptionで捕捉
-        print(f"非同期ダウンロード失敗 '{cmd}' failed: {e.stderr.decode()}")
+        adhoc.print(f"非同期ダウンロード失敗 '{cmd}' failed: {e.stderr.decode()}", color="red")
         adhoc.exit(throw=e)
     return local_file
 
@@ -461,7 +461,7 @@ def store(kwargs):
 class TokenDataset(adhoc.AdhocObject):
 
     def __init__(self, base: str, chunkfiles: List[dict], **kwargs):
-        print('@@@TokenDataset', kwargs)
+        # print('@@@TokenDataset', kwargs)
         super().__init__(**kwargs)
         total = 0
         files = []
@@ -495,6 +495,7 @@ class TokenDataset(adhoc.AdhocObject):
         self.files = files
         self.resize(*self.get(kwargs, "start|=0", "end", "length|size"))
         self.reindex(self.get(kwargs, "resume_index|=0"))
+        self.ratio = self.get(kwargs, "ratio")  # ratio
         self.loaded_chunk_index = -1
         self.try_prefetch(self.chunk_index)
 
@@ -605,7 +606,7 @@ class TokenDataset(adhoc.AdhocObject):
                 return blocks
         url = os.path.join(self.path, meta["path"])
         adhoc.verbose_print('非同期ダウンロード失敗', url)
-        print("@meta", chunk_index, meta, url)
+        #print("@meta", chunk_index, meta, url)
         with tempfile.NamedTemporaryFile(mode="w+", suffix=".npz.zst", delete=True) as temp_file:
             download_file(url, temp_file.name)
             blocks = load_chunk(temp_file.name)

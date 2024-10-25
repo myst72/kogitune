@@ -39,9 +39,9 @@ def test_pretrain_recipe():
     with tempfile.TemporaryDirectory() as tmp_dir:
         os.chdir(tmp_dir)
         url_list = [
-            "https://papertown-jwu.s3.ap-northeast-1.amazonaws.com/llm-jp-915a/mc4ja_line",
+            "https://papertown-jwu.s3.ap-northeast-1.amazonaws.com/llm-jp-915a/mc4ja_line?length=1b",
             "https://papertown-jwu.s3.ap-northeast-1.amazonaws.com/llm-jp-915a/pythondoc_def",
-            "https://papertown-jwu.s3.ap-northeast-1.amazonaws.com/llm-jp-915a/python",
+            "https://papertown-jwu.s3.ap-northeast-1.amazonaws.com/llm-jp-915a/python?ratio=0.1",
             "https://papertown-jwu.s3.ap-northeast-1.amazonaws.com/llm-jp-915a/markdownpyedu",
         ]
         dataset = DatasetRecipe(url_list, batch_size=1024, block_size=512)

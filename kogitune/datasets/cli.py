@@ -59,8 +59,7 @@ def get_cli(**kwargs):
             output_file = adhoc.get(kwargs, f"output_file|={basename(dataset)}.jsonl.zst")
 
         with FileSpliter(output_file, config, max_items) as splitter:
-            for sample in datastream.samples(start, end):
-                sample = filter(sample)
+            for sample in filter(datastream.samples(start, end)):
                 if sample is not None:
                     splitter.write(json.dumps(sample, ensure_ascii=False))
 

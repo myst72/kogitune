@@ -17,7 +17,7 @@ class TextGeneration(Task):
         #     sample["_test"] = self.format(template, "test", sample)
 
     def eval(self, model:Model, samples: List[dict]):
-        prompts = self.extract_values(samples, "_input")
+        prompts = self.column_values(samples, "_input")
         if self.extra_prompt:
             prompts = [f"{prompt}{self.extra_prompt}" for prompt in prompts]
         if self.chat_mode:
@@ -29,11 +29,11 @@ class TextGeneration(Task):
         self.update_values(samples, {"_prompt": prompts, "_output": output_texts})
     
     def calc(self, metric, samples: List[dict]):
-        candidates = self.extract_values(samples, "_output")
+        candidates = self.column_values(samples, "_output")
         if self.extractor:
-            candidates = [self.extractor.extract(c) for c in candidates]
-            print('@@', candidates)
-        references = self.extract_values(samples, "_reference")
+            candidates = [self.extractor.extract(c)[0] for c in candidates]
+            self.update_values(samples, {"_extracted": candidates})
+        references = self.column_values(samples, "_reference")
         results = metric.calc(candidates, references)
         self.update_values(samples, results)
         return results
@@ -52,7 +52,7 @@ class SelfCheckGPT(TextGeneration):
         sample["_input"] = self.format(template, "prompt", sample)
 
     def eval(self, model, samples: List[dict]):
-        input_texts = self.extract_values(samples, "_input")
+        input_texts = self.column_values(samples, "_input")
         gen_args = model.filter_gen_args(**self.init_kwargs)
 
         output_texts = model.generate(input_texts, _n=1, _do_sample=False, **gen_args)

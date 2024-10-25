@@ -151,16 +151,20 @@ class RecordData(adhoc.AdhocObject):
     def filter_samples(cls, samples: List[dict], conditions: List[str]):
         matched_samples = []
         for sample in samples:
+            matched=True
             for condition in conditions:
-                if safe_sample_matched(sample, condition):
-                    matched_samples.append(sample)
+                if not safe_sample_matched(sample, condition):
+                    matched = False
+                    break
+            if matched:
+                matched_samples.append(sample)   
         return matched_samples
 
     @classmethod
     def extract_labels(cls, samples: List[dict], condition:str):
         labels = []
         for sample in samples:
-            labels = int(safe_sample_matched(sample, condition))
+            labels.append(int(safe_sample_matched(sample, condition)))
         return labels
 
     @classmethod
@@ -189,6 +193,7 @@ class RecordData(adhoc.AdhocObject):
 
 def safe_sample_matched(sample:dict, expr):
     return eval(expr, None, {'sample': sample})
+
 
 @adhoc.from_kwargs
 def word_list_from_kwargs(**kwargs):

@@ -12,7 +12,7 @@ regex_operators = re.compile(r'[.\*\+\?\[\]\(\)\|\^\$]')
 class PatternLoader(adhoc.AdhocLoader):
 
     def load_modules(self, path, kwargs):
-        from .patterns_commons import pattern_config_commons
+        from .patterns_chico import pattern_config_commons
         from .patterns_langs import pattern_config_lang
     
     def load_default(self, path, kwargs):
@@ -30,8 +30,10 @@ class PatternLoader(adhoc.AdhocLoader):
 PatternLoader(PATTERN_MAP).register("re|pattern")
 
 class Pattern(adhoc.AdhocObject):
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.scheme = 'pattern'
         if '_compiled' in kwargs:
             self.compiled = kwargs['_compiled']
         elif '_pattern' in kwargs:
@@ -43,6 +45,9 @@ class Pattern(adhoc.AdhocObject):
     def compile(self, *patterns: List[str], flags=0):
         return re.compile("|".join(patterns), flags=flags)
 
+    def search(self, text:str):
+        return self.compiled.search(text)
+
     def contains(self, text:str) -> bool:
         return bool(self.compiled.search(text))
 
@@ -52,36 +57,32 @@ class Pattern(adhoc.AdhocObject):
     def count(self, text: str) -> int:
         return len(self.compiled.findall(text))
 
+    def unique_count(self, text: str) -> int:
+        return len(set(self.compiled.findall(text)))
+
     def count_match(self, text: str) -> int:
         before = text.count("💣")
         replaced = self.pattern.sub(text, "💣")
         return replaced.count("💣") - before
 
-    def replace(self, text: str, replaced_text:str='<MATCH>') -> str:
-        return self.compiled.sub(replaced_text, text)
-
-    def extract(self, text: str, join:Optional[str]=None) -> str:
+    def extract(self, text: str) -> List[str]:
         """
         Extractor と同じインターフェース
         """
         matched = self.findall(text)
-        if join is None:
-            if len(matched) == 1:
-                if isinstance(matched[0], str):
-                    return matched[0]
-                if isinstance(matched[0], tuple) and isinstance(matched[0][0], str):
-                    return matched[0][0]
-            return ''
         ss = []
         for m in matched:
             if isinstance(m, str):
                 ss.append(m)
             else:
-                ss.append(join.join(m))
-        return join.join(ss)
+                ss.append('\n'.join(m))
+        if len(ss) == 0:
+            ss.append('') # ss[0] = '' は保証する
+        return ss
 
-    def __repr__(self):
-        return f"{self.path}#{self.tag}"
+    def replace(self, text: str, replaced_text:str='<MATCH>') -> str:
+        return self.compiled.sub(replaced_text, text)
+
 
     def registor(self, names: str):
         global PATTERN_MAP
@@ -94,26 +95,31 @@ class Pattern(adhoc.AdhocObject):
 def RE(*patterns: List[str], flags=0):
     return regex.compile("|".join(patterns), flags=flags)
 
-PATTERN_DATABASE = {
+PATTERN_DATABASE = {}
 
-}
-
-def register_pattern_config(pattern_config_map: dict):
+def register_pattern(pattern_config_map: dict):
     global PATTERN_DATABASE
     for names, pattern_config in pattern_config_map.items():
         for name in adhoc.list_keys(names):
+            if name in PATTERN_DATABASE:
+                adhoc.verbose_print(f'Duplicated registration {name}', dump=pattern_config)
             PATTERN_DATABASE[name] = pattern_config
 
-def test_pattern_config(pattern_config:dict):
-    if 'patterns' in pattern_config:
-        compiled = RE(*pattern_config['patterns'], pattern_config.get('flag', 0))
-        pattern_config['compiled'] = compiled
-        return compiled
+def find_pattern(key):
+    global PATTERN_DATABASE
+    if is_config(key):
+        return load_config(key)
+    if key in PATTERN_DATABASE:
+        return PATTERN_DATABASE[key]
+    simkey = adhoc.find_simkey(PATTERN_DATABASE, key, max_distance=1)
+    if simkey:
+        adhoc.verbose_print(f'Typo? {key} => {simkey}')
+        return PATTERN_DATABASE[simkey]
+    return None
 
 def find_compiled_pattern(key):
-    global PATTERN_DATABASE
-    if key in PATTERN_DATABASE:
-        pattern_config = PATTERN_DATABASE[key]
+    pattern_config = find_pattern(key)
+    if pattern_config:
         if 'compiled' in pattern_config:
             return pattern_config['compiled']
         compiled = compile_pattern(pattern_config)
@@ -135,6 +141,16 @@ def compile_pattern(config: dict):
         return regex.compile(pattern, flags=config.get('flags', 0))
     adhoc.verbose_print('パターンが作れません', dump=config)
     return None
+
+def test_pattern(key):
+    pattern_config = find_pattern(key)
+    if pattern_config:
+        pattern = adhoc.load('pattern', key)
+        if 'tests' in pattern_config:
+            for testcase, _ in pattern_config['tests']:
+                print(key, testcase)
+                print(" =>", pattern.extract(testcase))
+                print(" =>", pattern.replace(testcase))
 
 ## Trie
 
@@ -211,7 +227,8 @@ class Trie():
     def pattern(self):
         return self._pattern(self.dump())
 
-##
+
+### 日本語関連
 
 pattern_config_ja = {
     "hiragana|hira": {
@@ -227,13 +244,9 @@ pattern_config_ja = {
         "flag": 0,
     },
 }
+register_pattern(pattern_config_ja)
 
-register_pattern_config(pattern_config_ja)
-
-### 日本語関連
-
-pattern_hirakata = re.compile(r'[ぁ-んァ-ヶ]')
-pattern_japanese = re.compile(r'[ぁ-んァ-ヶー・\u4E00-\u9FFF\u3400-\u4DBF、。]')
+pattern_hirakata = None
 
 def contains_japanese(text: str) -> bool:
     """
@@ -242,73 +255,83 @@ def contains_japanese(text: str) -> bool:
     :param text: 判定するテキスト
     :return: 日本語を含む場合はTrue、そうでない場合はFalse
     """
-    return bool(re.search(pattern_hirakata, text))
+    if pattern_hirakata is None:
+        pattern_hirakata = adhoc.load('pattern', 'hirakata')
+    return pattern_hirakata.contains(text)
 
-## TextEval
-from .textevals import TextEval
-
-class WordCount(TextEval):
-    def __init__(self, **kwargs) -> None:
-        super().__init__(**(kwargs | {"_path": "word-count"}))
-        subpath = self.get(kwargs, "_subpath|word_list|words|!!")
-        self.pattern = adhoc.load('pattern', subpath, **kwargs)
-
-    def eval(self, text: str) -> int:
-        return self.pattern.count(text)
-
-WordCount.register("word-count|pattern-count|count")
-
-class WordFraction(TextEval):
-    def __init__(self, **kwargs) -> None:
-        super().__init__(**(kwargs | {"_path": "word-count"}))
-        subpath = self.get(kwargs, "_subpath|word_list|words|!!")
-        self.pattern = adhoc.load('pattern', subpath, **kwargs)
-
-    def eval(self, text: str) -> int:
-        a = self.pattern.count(text)
-        b = len(text)
-        return a / b if b != 0 else 1
-
-WordFraction.register("word-fraction|pattern-fraction|fraction")
-
-
-## 
+##  Extractor
 
 
 EXTRACTOR_MAP = {}
 
 class ExtractorLoader(adhoc.AdhocLoader):
 
-    def load_from_map(self, path, kwargs):
-        pat = super().load_from_map(path, kwargs)
-        # if "fraction" in kwargs:
-        #     path, tag, kwargs = adhoc.parse_path(kwargs.pop("fraction"))
-        #     fraction = self.load(path, tag, **kwargs)
-        #     return FractionEval(texteval, fraction)
-        return pat
-
     def load_default(self, path, kwargs):
-        try:
-            pat = adhoc.load('pattern', path, **kwargs)
-            return pat
-        except KeyError as e:
-            return self.load_default(path, kwargs)
+        if regex_operators.search(path):
+            # 正規表現の演算子が含まれれば正規表現とみなす。
+            kwargs['_pattern'] = path
+            return Pattern(**kwargs)
+        return super().load_default(path, kwargs)
 
-ExtractorLoader(EXTRACTOR_MAP).register("extract")
+ExtractorLoader(EXTRACTOR_MAP).register("extractor")
 
 class Extractor(adhoc.AdhocObject):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.scheme = 'extractor'
 
-    def __call__(self, text: str) -> str:
-        return self.replace(text)
-
-    def extract(self, text, join:Optional[str]=None):
-        return []
+    def extract(self, text: str) -> List[str]:
+        return [text]
 
     @classmethod
-    def registor(cls, names: str):
+    def register(cls, names: str):
         global EXTRACTOR_MAP
         for name in adhoc.list_keys(names):
             EXTRACTOR_MAP[name.lower()] = cls
+
+Extractor.register('none')
+
+class StopWordExtractor(Extractor):
+    """
+    テキストからストップワードまでを取り出すExtractor
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.load('pattern', '_subpath|pattern|stop_words|!!', **kwargs)
+
+    def extract(self, text):
+        matched = self.pattern.search(text)
+        if matched:
+            text = text[: matched.start()]
+        return [text]
+
+StopWordExtractor.register('stop_words|stop_word')
+
+stopword_pattern_config = {
+    "wikipedia_footnote_ja": {
+        "words": [
+            "脚注",
+            "関連項目",
+            "日本国内の関連項目",
+            "出典",
+            "出典・脚注",
+            "参照",
+            "外部リンク",
+            "参考文献",
+            "その他関連事項",
+            "Footnotes",
+            "See also",
+            "Further reading",
+            "Bibliography",
+            "References",
+            "Notes",
+            "Citations",
+            "Sources",
+            "External links",
+        ],
+    }
+}
+
+register_pattern(stopword_pattern_config)
 

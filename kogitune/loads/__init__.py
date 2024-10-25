@@ -1,8 +1,8 @@
 from .tokenizers import Tokenizer
-from .models import Model
+from .models_ import Model
 from .datasets import DataStream, Transform
 from .tables import RecordData, LeaderBoard
-from .filters import TextFilter
-from .patterns import Pattern, Extractor
-from .textevals import TextEval
-from .metrics import Metric
+from .filters_ import TextFilter
+from .patterns_ import Pattern, Extractor
+from .textevals_ import TextEval
+from .metrics_ import Metric

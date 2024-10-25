@@ -3,7 +3,7 @@
 import json
 
 from .commons import *
-from .models import Model
+from .models_ import Model
 
 class OpenAIModel(Model):
     def __init__(self, **kwargs):

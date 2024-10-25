@@ -223,6 +223,7 @@ def load_config(config_file, default_value={}):
         return load_list(config_file)
     return default_value
 
+
 def parse_key_value(key: str, value: str):
     if not isinstance(value, str):
         return value
@@ -374,11 +375,11 @@ def messagefy(**kwargs):
     ss = []
     if 'if_dislike' in kwargs:
         examples = kwargs.pop('if_dislike')
-        ss.append('If you dislike this, set//もしお嫌なら')
+        ss.append('If you dislike ..//もしお嫌なら')
         ss.append(example_key_values(examples))
     if 'if_enforce' in kwargs:
         examples = kwargs.pop('if_enforce')
-        ss.append('If you enforce to add, set//もし強制的に加えたいなら')
+        ss.append('If you enforce to add ..//もし強制的にお加えたいなら')
         ss.append(example_key_values(examples))
     
     for key, value in kwargs.items():
@@ -452,9 +453,13 @@ def report_ArgumentError(message, throw, called):
 def list_keys(keys: Union[List[str], str], sep="|"):
     if isinstance(keys, (list, tuple)):
         return keys
-    if sep != "|":
-        return [k.strip() for k in keys.split(sep)]
-    return keys.split(sep)
+    suffix = ''
+    if '{' in keys:  # a|b|={c|d} かなりアドホックな実装
+        keys, _, suffix = keys.partition('{')
+        suffix = '{' + suffix
+    keys = keys.split(sep)
+    keys[-1] = keys[-1]+suffix
+    return keys
 
 def list_values(values: Any, map_fn=str):
     if isinstance(values, list):
@@ -496,7 +501,7 @@ def find_simkey(dic, given_key, max_distance=1):
             key_map[key] = edit_distance(key, given_key)
     keys = sorted([(dis, k) for k, dis in key_map.items() if dis <= max_distance])
     if len(keys) > 0:
-        debug_print(keys)
+        # debug_print(keys)
         return keys[0][1]
     return None
 
@@ -523,13 +528,13 @@ def panda_print(key, value):
     key = colored(key, "blue")
     adhoc_print(f"{key}={repr(value)}", face=' 🐼', once=True)
 
-
 def get_adhoc(dic: dict, 
-                adhoc_key: str, 
-                default_value=None, 
-                recursive=3, 
-                return_keys = True, 
-                type_fn=identity):
+              adhoc_key: str, 
+              default_value=None, 
+              return_keys = True, 
+              verbose=True,
+              recursive=0, 
+              type_fn=identity):
     keys = list_keys(adhoc_key)
     default_key = get_default_key(keys)
     for key in keys:
@@ -541,13 +546,14 @@ def get_adhoc(dic: dict,
             exit(throw=KeyError(f"`{default_key}=...`が必要です"))
         if key.startswith("="):
             value = parse_key_value(default_key, key[1:])
-            if dic.get('verbose', 0) or dic.get('use_panda', True):
+            if isinstance(value, str) and value.startswith('{') and value.endswith('}'):
+                value = get_adhoc(dic, value[1:-1], return_keys=False)
+            if verbose and dic.get('verbose', 1):
                 panda_print(default_key, value)
         elif key.startswith("!"):
             value = parse_key_value(default_key, key[1:])
             adhoc_print(
-                f"`{default_key}` is missing. Confirm the default"
-                f"//`{default_key}`が設定されてないよ. 確認して",
+                f"Your `{default_key}` is needed.//`{default_key}`は自分で設定してよ",
                 f"{default_key}={repr(value)}."
             )
         elif key in dic:
@@ -571,6 +577,7 @@ def get_adhoc(dic: dict,
         value = rec_value(dic, value, recursive, type_fn)
         return (value, matched_key, default_key) if return_keys else value
     return (default_value, None, default_key) if return_keys else default_value
+
 
 def record(kwargs: dict, *adhoc_keys: str, record_to=None, record_dic=None):
     values = []
@@ -614,22 +621,6 @@ def get_words(kwargs: dict, adhoc_keys: str, type_fn=list_values):
         return values
     return values
 
-
-def extract_dict_with_prefix(dic: dict, prefix: str):
-    extracted = {}
-    if not prefix.endswith("_"):
-        prefix = f"{prefix}_"
-    for key in dic.keys():
-        if key.startswith(prefix):
-            subkey = key[len(prefix) :]
-            if subkey in ("config", "kwargs", "args", "options"):
-                extracted.update(load_config(dic[key]))
-            elif subkey == "path":
-                pass
-            else:
-                extracted[subkey] = dic[key]
-    return extracted
-
 def safe_kwargs(kwargs: dict, adhoc_keys:List[str], unsafe=None):
     extracted = {}
     for adhoc_key in adhoc_keys:
@@ -646,6 +637,54 @@ def safe_kwargs(kwargs: dict, adhoc_keys:List[str], unsafe=None):
     for key in extracted.keys():
         use_stacked_key(key)
     return extracted
+
+# formatting
+
+format_pattern = re.compile(r"\{([^}]+)\}")
+
+def adhoc_format(format:str, kwargs:dict) -> list[str]:
+    escaped_brace = False
+    if '{{' in format and '}}' in format:
+        escaped_brace = True
+        format = format.replace('{{', '｛').replace('}}', '｝')
+    # 正規表現を使って{}で囲まれた部分を全て抽出
+    matches = format_pattern.findall(format)
+    replace = {}
+    for match in matches:
+        if match in replace:
+            continue
+        if ':' in match:
+            adhoc_key = match.split(':')[0]
+            value = get(kwargs, adhoc_key)
+            fmt = '{:' + match.split(':')[-1] + '}'
+            value = fmt.format(value)
+        else:
+            adhoc_key = match.split(':')[0]
+            value = get(kwargs, adhoc_key)
+        replace[match] = value
+    formatted_string = format
+    for match, value in replace.items():
+        formatted_string = formatted_string.replace('{'+match+'}', f'{value}')
+    if escaped_brace:
+        formatted_string = formatted_string.replace('｛', '{').replace('｝', '}')
+    return formatted_string
+
+
+def extract_dict_with_prefix(dic: dict, prefix: str):
+    extracted = {}
+    if not prefix.endswith("_"):
+        prefix = f"{prefix}_"
+    for key in dic.keys():
+        if key.startswith(prefix):
+            subkey = key[len(prefix) :]
+            if subkey in ("config", "kwargs", "args", "options"):
+                extracted.update(load_config(dic[key]))
+            elif subkey == "path":
+                pass
+            else:
+                extracted[subkey] = dic[key]
+    return extracted
+
 
 def parse_value_of_args(kwargs: dict):
     for key in list(kwargs.keys()):
@@ -781,6 +820,7 @@ LOADER_SCHEME = {}
 class AdhocObject(object):
 
     def __init__(self, **kwargs):
+        self.scheme = '(undefined)'
         self.path = kwargs.get('_path', '')
         self.tag = kwargs.pop('_tag', '')
 
@@ -800,12 +840,48 @@ class AdhocObject(object):
         pathargs = self.pathargs if hasattr(self, "pathargs") else None
         return record(kwargs, *adhoc_keys, record_to=self, record_dic=pathargs)
 
+    def load(self, scheme, path, **kwargs):
+        if isinstance(path, str) and '|' in path:
+            path = self.get(kwargs, path)
+        obj = load(scheme, path, **kwargs)
+        setattr(self, scheme, obj)
+        if hasattr(self, "pathargs") and hasattr(obj, "encode_as_json"):
+            self.pathargs[scheme] = obj.encode_as_json()
+        return obj
 
-def load(scheme: str, path: str = None, /, **kwargs):
+    def encode_as_json(self):
+        pathargs = self.pathargs if hasattr(self, "pathargs") else {}
+        return {'scheme': self.scheme, 'path': self.path} | pathargs
+
+    def test_reload(self):
+        config = self.encode_as_json()
+        reloaded = load(config.copy()).encode_as_json()
+        if f'{config}' == f'{reloaded}':
+            return True
+        print('@test_reload', config, reloaded)
+        return False
+
+    def save_config(self, filepath: str):
+        adhoc_print(json.dumps(self.encode_as_json(), indent=2), face="")
+        with open(filepath, "w") as w:
+            json.dump(self.encode_as_json(), w, indent=2)
+
+
+def load(scheme: Union[str, dict], path: Optional[Union[str, dict]] = None, /, **kwargs):
     global LOADER_SCHEME
-    use_unwrap = kwargs.pop('use_unwrap', False)
+    if isinstance(scheme, dict):
+        config = scheme
+        scheme = config.pop('scheme')
+        path = config.pop('path')
+        kwargs = config | kwargs
     if path is None:
         scheme, _, path = scheme.partition(":")
+    elif isinstance(path, dict):
+        config = path
+        config.pop('scheme')
+        path = config.pop('path')
+        kwargs = config | kwargs
+    use_unwrap = False
     if scheme.startswith('_'):
         scheme = scheme[1:]
         use_unwrap = True
@@ -855,7 +931,7 @@ class AdhocLoader(object):
         return self.lower(loader_path)
     
     def lower(self, loader_path):
-        return loader_path.lower().replace('_', '').replace('-', '')
+        return loader_path.lower().replace('-', '_')
 
     def load_from_map(self, path, kwargs):
         loader_path = self.parse_loader_path(path, kwargs)
@@ -863,6 +939,11 @@ class AdhocLoader(object):
             self.load_modules(path, kwargs)
         if loader_path in self.MAP:
             return self.MAP[loader_path](**kwargs)
+        simkey = find_simkey(self.MAP, loader_path, max_distance=2)
+        if simkey:
+            verbose_print(f'スペルミス？ {loader_path} {simkey}')
+            kwargs['_path'] = kwargs['_path'].replace(loader_path, simkey)
+            return self.MAP[simkey](**kwargs)
         return self.load_default(path, kwargs)
 
     def parse_k_from_path(self, path, kwargs, k_string='k'):
@@ -875,7 +956,7 @@ class AdhocLoader(object):
         return path
 
     def load_default(self, path, kwargs):
-        debug_print(self.MAP)
+        debug_print(list(self.MAP.keys()))
         raise KeyError(path)
 
     def register(self, scheme: str):

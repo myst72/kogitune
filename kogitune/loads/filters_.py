@@ -6,16 +6,17 @@ FILTER_MAP = {}
 
 class TextFilterLoader(adhoc.AdhocLoader):
 
+    def load_modules(self, path, kwargs):
+        from .filters_docs import UnicodeNormalization
+
     def load_from_map(self, path, kwargs):
         global FILTER_MAP
         if path.endswith(".json"):
-            ## TODO
-            return load_filter_config(path, **kwargs)
+            return adhoc.load_adhoc_config(path, **kwargs)
         return super().load_from_map(path, kwargs)
     
     def load_default(self, path, kwargs):
         try:
-            print("@maxmin", kwargs)
             filter = MaxMinFilter(**kwargs)
             return filter
         except KeyError:
@@ -24,10 +25,12 @@ class TextFilterLoader(adhoc.AdhocLoader):
 
 TextFilterLoader(FILTER_MAP).register("filter")
 
+
 class TextFilter(adhoc.AdhocObject):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.target = self.get(kwargs, "target|text_key|=text")
+        self.scheme = 'filter'
+        self.target = self.get(kwargs, "_target|target|text_key|=text")
         self.pathargs = {}
 
     def filter(self, sample: dict) -> Optional[dict]:
@@ -45,27 +48,19 @@ class TextFilter(adhoc.AdhocObject):
     def filter_list(self, samples:List[dict]):
         return [sample for sample in samples if self.filter(sample)]
 
-
-    def encode_as_json(self):
-        return self.encode_path()
-
-    def save_config(self, filepath: str):
-        adhoc.print(json.dumps(self.encode_as_dict(), indent=2), face="")
-        with open(filepath, "w") as w:
-            json.dump(self.encode_as_json(), w, indent=2)
-
     @classmethod
     def register(cls, names: str):
         global FILTER_MAP
         for name in adhoc.list_keys(names):
             FILTER_MAP[name] = cls
 
+TextFilter.register('none')
 
 @adhoc.from_kwargs
 def filter_from_kwargs(**kwargs):
     filter = kwargs.pop("filter", None)
     if filter is None:
-        filter = TextFilter(**{"_path": "none"})
+        filter = TextFilter(**kwargs)
     else:
         filter = adhoc.load("filter", filter, extract_prefix="filter", **kwargs)
     return filter
@@ -81,16 +76,16 @@ class MaxMinFilter(TextFilter):
         評価関数フィルタを作る
         """
         super().__init__(**kwargs)
+        self.path = 'maxmin'
         self.get(
             kwargs,
             "max_inclusive|max",
             "min_inclusive|min",
             "max_exclusive", "min_exclusive",
         )
-        path = adhoc.get(kwargs, '_subpath|_path')
-        self.texteval = adhoc.load("texteval", path, **kwargs)
+        self.load("texteval", '_subpath|texteval|_path', **kwargs)
+        self.name = f'maxmin:{self.texteval.path}'
         self.record_key = self.texteval.path
-        self.path = f'maxmin:{path}'
 
     def filter(self, sample: dict) -> Optional[str]:
         text = sample[self.target]
@@ -106,15 +101,14 @@ class MaxMinFilter(TextFilter):
         sample[self.record_key] = round(value, 4)
         return sample
 
-MaxMinFilter.register("maxmin|max|min")
+MaxMinFilter.register("maxmin")
 
 class ContainsFilter(TextFilter):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        path = adhoc.get(kwargs, '_subpath|_path')
-        self.pattern = adhoc.load("pattern", path, **kwargs)
-        self.path = f'contains:{path}'
+        self.load("pattern", '_subpath|pattern|_path|!!', **kwargs)
+        self.name = f'contains:{self.pattern.path}'
 
     def filter(self, sample: dict) -> Optional[str]:
         text = sample[self.target]
@@ -124,10 +118,38 @@ class ContainsFilter(TextFilter):
 
 ContainsFilter.register('contains')
 
+class ReplaceFilter(TextFilter):
+    """
+    置き換えフィルター
+    a = 'replace:url#<URL>|date#<date>'
+    """
+
+    def __init__(self, **kwargs):
+        """
+        置き換えフィルターを作る
+        :param patterns: 置き換える文字列パターンのリスト
+        """
+        super().__init__(**kwargs)
+        self.patterns = self.get(kwargs, "_subpath|patterns|!!")
+        self.replace_patterns = []
+        for pat in adhoc.list_keys(self.patterns):
+            pat, sep, replaced = pat.partition('#')
+            if sep == '':
+                replaced = pat.split('_')[0]
+                replaced = f'<{replaced}>'
+            pattern = adhoc.load('pattern', pat, _replaced=replaced)
+            self.replace_patterns.append(pattern)
+
+    def filter_text(self, text)->Optional[str]:
+        for pattern in self.replace_patterns:
+            text = pattern.replace(text)
+        return text
+
+ReplaceFilter.register('replace')
 
 ## Composition
 
-class CompositeFilter(TextFilter):
+class ComposeFilter(TextFilter):
     """
     テキストフィルタを合成する
     :param filters:
@@ -138,14 +160,18 @@ class CompositeFilter(TextFilter):
         評価関数フィルタを作る
         """
         super().__init__(**kwargs)
-        self.filters = adhoc.get(kwargs, "filters", [])
+        self.path = "compose"
+        self.filters = [
+            load_filter(f) 
+            for f in adhoc.get(kwargs, "filters", [])
+        ]
 
     def encode_as_json(self):
         return {
-            "type": self.path,
+            "scheme": "filter",
+            "path": self.path,
             "filters": [f.encode_as_json() for f in self.filters],
-            "kwargs": self.pathargs,
-        }
+        } | self.pathargs
 
     def filter(self, sample: dict) -> Optional[dict]:
         for filter in self.filters:
@@ -154,23 +180,43 @@ class CompositeFilter(TextFilter):
                 return None
         return sample
 
-CompositeFilter.register("compose")
+ComposeFilter.register("compose")
 
-def generate_filter(config: dict, kwargs):
-    if isinstance(config, dict):
-        path = config["type"]
-        kwargs = config["kwargs"] | kwargs
-        kwargs.pop("filters", None)
-        filters = [generate_filter(conf, kwargs) for conf in config["filters"]]
-        filter = adhoc.load("filter", path, filters=filters, **kwargs)
-        return filter
-    assert isinstance(config, str)
-    path, args, tag = adhoc.parse_path(config)
-    return adhoc.load("filter", path, **(args | kwargs))
+def load_filter(config, target='text'):
+    if isinstance(config, TextFilter):
+        return config
+    if isinstance(config, str):
+        return adhoc.load('filter', config)
+    assert isinstance(config, dict)
+    return adhoc.load('filter', config['path'], **config)
 
+class ChoiceFilter(ComposeFilter):
+    """
+    テキストフィルタを合成する
+    :param filters:
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
-def load_filter_config(config_file, **kwargs):
-    with open(config_file) as f:
-        config = json.load(f)
-        return generate_filter(config, kwargs)
+    def filter(self, sample:dict) -> Optional[dict]:
+        for f in self.filters:
+            sample2 = f(sample)
+            if sample2 is not None:
+                return sample2
+        return None
+
+ChoiceFilter.register('choice|choose')
+
+class ExtractFilter(ComposeFilter):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.extractor = self.load(kwargs, '_subpath|extractor|!!')
+
+    def filter(self, sample:dict) -> Optional[dict]:
+        text = sample[self.target]
+        text = '\n'.join(self.extractor.extract(text))
+        sample[self.target] = text
+        return super().filter(sample)
+
+ChoiceFilter.register('extract')
 

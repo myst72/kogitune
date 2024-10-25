@@ -1,4 +1,4 @@
-from .patterns import re, register_pattern_config
+from .patterns_ import re, register_pattern
 
 pattern_config_commons = {
     "url": {
@@ -127,4 +127,4 @@ pattern_config_commons = {
     }
 }
 
-register_pattern_config(pattern_config_commons)
+register_pattern(pattern_config_commons)

@@ -3,7 +3,7 @@ import math
 from collections import Counter
 
 from ..loads.commons import *
-from .metrics import Metric
+from .metrics_ import Metric
 
 
 def levenshtein_similarity(candidate, reference):

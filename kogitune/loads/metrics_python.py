@@ -4,7 +4,7 @@ import traceback
 import signal
 
 from ..loads.commons import *
-from .metrics import Metric
+from .metrics_ import Metric
 
 ##
 # HumanEval

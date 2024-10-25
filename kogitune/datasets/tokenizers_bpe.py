@@ -16,12 +16,12 @@ VOCAB = [
     ("\n", -0.01),  # 改行
 ]
 
-def train_bpe(files:List[str], save_path:str, **kwargs):
+def train_bpe(files:List[str], save_path:str, /, **kwargs):
     tokenizers = adhoc.safe_import('tokenizers')
     from tokenizers import Tokenizer, models, pre_tokenizers, trainers, decoders
 
     tokenizer = Tokenizer(models.BPE())
-    byte_level = adhoc.get("bytelevel|byte_level|=True")
+    byte_level = adhoc.get(kwargs, "bytelevel|byte_level|=True")
     if byte_level:
         tokenizer.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False)
         tokenizer.decoder = decoders.ByteLevel()

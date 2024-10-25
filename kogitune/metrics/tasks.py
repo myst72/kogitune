@@ -109,8 +109,8 @@ class Task(adhoc.AdhocObject):
         pass
 
     def calc(self, metric: Metric, samples: List[dict]):
-        candidates = self.extract_values(samples, "_output")
-        references = self.extract_values(samples, "_reference")
+        candidates = self.column_values(samples, "_output")
+        references = self.column_values(samples, "_reference")
         results = metric.calc(candidates, references)
         self.update_values(samples, results)
         return results
@@ -119,7 +119,7 @@ class Task(adhoc.AdhocObject):
     def default_metrics():
         return []
 
-    def extract_values(self, samples: List[dict], key:str):
+    def column_values(self, samples: List[dict], key:str):
         return [sample[key] for sample in samples]
 
     def update_kwargs(self, samples:List[dict], /, **kwargs):

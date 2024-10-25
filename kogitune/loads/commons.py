@@ -1,5 +1,6 @@
 from typing import List, Union, Any, Optional
 import kogitune.adhocs as adhoc
+import json
 
 from .files import os, basename, zopen, safe_makedirs, write_config, read_config, join_name
 
@@ -30,6 +31,23 @@ def list_tqdm(list_or_value, desc=None):
     if len(list_or_value) == 1:
         return list_or_value
     return adhoc.tqdm(list_or_value, desc=desc)
+
+def is_config(path):
+    return path.endswith('.json')
+
+def load_config(url_path: str) -> dict:
+    if url_path.startswith('https://') or url_path.startswith('http://'):
+        requests = adhoc.safe_import("requests")
+        response = requests.get(url_path)
+        if response.status_code == 200:
+            try:
+                # JSONデータをインメモリでパース
+                data = response.json()  # json.loads(response.text) でも可
+                return data
+            except json.JSONDecodeError as e:
+                print(repr(e))
+    with open(url_path, "r") as file:
+        return json.load(file)
 
 
 class VerboseCounter(object):

@@ -26,8 +26,10 @@ from .stack import (
     record,
     get,
     get_list, 
+    get_words,
     get_formatted_text,
     safe_kwargs,
+    adhoc_format as format,
     parse_value,
     parse_value_of_args,
 

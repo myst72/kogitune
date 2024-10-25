@@ -1,4 +1,5 @@
 import kogitune
+from kogitune.loads import Pattern
 
 def test_pattern():
     patern = kogitune.load('pattern', "url")
@@ -16,4 +17,23 @@ def test_pattern_count():
 
 def test_pattern_extract():
     patern = kogitune.load('pattern', r"\b[ABCD]\b")
-    assert patern.extract("Answer (A)") == 'A'
+    assert patern.extract("Answer (A)") == ['A']
+
+WIKIPEDIA_TEST_DOC = """hoge
+hoge
+出典
+hoge
+"""
+
+def test_extractor_stopword():
+    f = kogitune.load('extractor', "stop_word:wikipedia_footnote_ja")
+    print(f.encode_as_json())
+    text = f.extract(WIKIPEDIA_TEST_DOC)
+    print(text)
+    assert '出典' not in text
+
+def test_texteval_stopword_fraction():
+    f = kogitune.load('texteval', "extracted_fraction:stop_word:wikipedia_footnote_ja")
+    print(f.encode_as_json())
+    v = f.eval(WIKIPEDIA_TEST_DOC)
+    assert v > 0.5

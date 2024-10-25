@@ -1,7 +1,7 @@
 import re
 import collections
 from .commons import *
-from .patterns import register_pattern_config
+from .patterns_ import register_pattern
 
 pattern_config_lang = {
     "en": { 
@@ -280,7 +280,7 @@ pattern_config_lang = {
     },
 }
 
-register_pattern_config(pattern_config_lang)
+register_pattern(pattern_config_lang)
 
 def compile_language_patterns(langs: Optional[List[str]]=None):
     langs = langs or list(pattern_config_lang.keys())

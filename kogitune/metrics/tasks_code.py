@@ -7,17 +7,27 @@ class CodeEval(TextGeneration):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.n = adhoc.get(kwargs, 'num_return_sequences|n|=1')
-        self.chat_mode = False
+        self.chat_mode = adhoc.get(kwargs, 'chat_mode|=False')
+        if self.chat_mode: # chat_mode かどうかでデフォルトのextractor切り替え。
+            extractor = adhoc.load(kwargs, "extractor|=python")
+        else:
+            extractor = adhoc.get(kwargs, "extractor|=codex")
+        self.extractor = adhoc.load('extractor', extractor, **kwargs)
 
     def apply_template(self, sample:dict, template:dict):
         sample["_input"] = self.format(template, "prompt", sample)
         sample["_reference"] = self.format(template, "reference", sample)
         sample["_test"] = self.format(template, "test", sample)
 
-    def merge(self, heads: List[str], tails: List[List[str]], merge_fn):
+    def merge(self, prompts: List[str], tails: List[List[str]]):
         merged_list = []
-        for head, tail in zip(heads, tails):
-            merged_list.append([merge_fn(head, x) for x in listfy(tail)])
+        for prompt, output_texts in zip(prompts, tails):
+            for output_text in listfy(output_texts):
+                code = self.extractor.extract(output_text)[0]
+                if not self.chat_mode: # chat_modeでないときは、プロンプトを先頭につける
+                    code = prompt + code
+                merged_list.append(code)
+        adhoc.verbose_print('[Extracted Code]', dump=merged_list)
         return merged_list
 
     @property
@@ -25,12 +35,10 @@ class CodeEval(TextGeneration):
         return ['pass@1']
 
     def calc(self, metric, samples: List[dict]):
-        from ..loads.metrics_python import openai_extract_code
-
-        inputs = self.extract_values(samples, "_input")
-        outputs = self.extract_values(samples, "_output")
-        candidates = self.merge(inputs, outputs, openai_extract_code)
-        testcases = self.extract_values(samples, "_test")
+        inputs = self.column_values(samples, "_input")
+        outputs = self.column_values(samples, "_output")
+        candidates = self.merge(inputs, outputs)
+        testcases = self.column_values(samples, "_test")
         results = metric.calc(candidates, testcases)
         self.update_values(samples, results)
         return results
@@ -38,23 +46,23 @@ class CodeEval(TextGeneration):
 CodeEval.register("code_eval|pass@1|pass@k")
 
 
-class OpenAIStylePythonExtractor(Extractor):
+class CodexExtractor(Extractor):
     """
     OpenAI HumanEval論文のコード抽出手法
     """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    def extract(self, text:str, join:Optional[str]=None):
+    def extract(self, text:str) -> List[str]:
         stop_sequences = ["\nclass", "\ndef", "\n#", "\n@", "\nprint", "\nif", "\n```"]
         min_stop_index = len(text)
         for seq in stop_sequences:
             stop_index = text.find(seq)
             if stop_index != -1 and stop_index < min_stop_index:
                 min_stop_index = stop_index
-        return "\n" + text[:min_stop_index]
+        return ["\n" + text[:min_stop_index]]
 
-OpenAIStylePythonExtractor.registor('humaneval')
+CodexExtractor.register('codex')
 
 class PythonSyntacticExtractor(Extractor):
     """
@@ -65,7 +73,7 @@ class PythonSyntacticExtractor(Extractor):
         super().__init__(**kwargs)
         self.ast = adhoc.safe_import('ast')
 
-    def extract(self, text:str, join:Optional[str]=None):
+    def extract(self, text:str):
         extracted_line = []
         lines = text.split('\n')
         i = 0
@@ -88,7 +96,7 @@ class PythonSyntacticExtractor(Extractor):
             if code is not None:
                 extracted_line.append(code)
             i += next
-        return '\n'.join(extracted_line)
+        return ['\n'.join(extracted_line)]
 
     def get_syntax_error_line(self, code):
         try:
@@ -108,6 +116,6 @@ class PythonSyntacticExtractor(Extractor):
         return None
 
 
-PythonSyntacticExtractor.registor('python')
+PythonSyntacticExtractor.register('python')
 
 

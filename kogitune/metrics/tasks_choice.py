@@ -114,7 +114,7 @@ class MIA(Task):
             sample = samples[0]
             for key in samples[0]:
                 if sample[key] in (0, 1):
-                    labels = self.extract_values(samples, key)
+                    labels = self.column_values(samples, key)
                     if labels.count(0) + labels.count(1) == len(labels):
                         label_keys.append(key)
         if len(label_keys) > 0:

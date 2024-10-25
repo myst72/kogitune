@@ -23,7 +23,6 @@ class DataStreamLoader(adhoc.AdhocLoader):
 
 DataStreamLoader({}).register("datastream|dataset")
 
-
 class DataStream(adhoc.AdhocObject):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -176,7 +175,6 @@ def load_dataset_names(path, imported_datasets=None):
     return []
 
 
-
 class Transform(object):
     def __init__(self, transforms=None, columns=None):
         """
@@ -235,4 +233,10 @@ class TransformIter(object):
     def __next__(self):
         return self.transform.transform_s(next(self.iterator))
 
-
+def apply_template(template:dict, sample: dict, 
+                   keys=List[str],
+                   record: dict=None):
+    record = sample if record is None else record
+    for key, format in template.items():
+        record[key] = format.format(**sample)
+        

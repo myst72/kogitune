@@ -18,6 +18,13 @@ def test_adhoc_get():
     assert adhoc.get(kwargs, 'ccc|!3') == 3
     assert adhoc.get(kwargs, 'ccc') == None
 
+def test_adhoc_get_rec():
+    kwargs = {
+        'aaa': 1, 'bbb': 2
+    }
+    assert adhoc.get(kwargs, 'ccc|={aaa}') == 1
+    assert adhoc.get(kwargs, 'ccc|={bbb|aaa}') == 2
+
 def test_adhoc_get_simkey():
     kwargs = {
         'metric': 1,
@@ -60,7 +67,10 @@ def test_adhoc_dummy_tqdm():
             for n in range(10):
                 pbar.update(1)
 
-
+def test_adhoc_format():
+    assert adhoc.format('X{a|b|=1}Y', {'a': 0}) == 'X0Y'
+    assert adhoc.format('X{a|b|=1}Y', {'b': 3}) == 'X3Y'
+    assert adhoc.format('X{a|b|=1}Y', {'c': 1}) == 'X1Y'
 
 def test_adhoc_format_unit():
     with adhoc.start_timer() as timer:
