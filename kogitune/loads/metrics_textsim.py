@@ -8,7 +8,7 @@ from .metrics_ import Metric
 
 def levenshtein_similarity(candidate, reference):
     distance = adhoc.edit_distance(candidate, reference)
-    max_length = max(len(candidate), len(reference))
+    max_length = max(len(candidate), len(reference), 1)
     return 1 - (distance / max_length)
 
 
@@ -21,6 +21,7 @@ class EditSim(Metric):
         return levenshtein_similarity(candidate, reference)
 
 EditSim.register("editsim|levenshtein")
+
 
 ##
 # 字句ベース
@@ -36,7 +37,7 @@ def jaccard_similarity(candidate, reference, tokenize):
     union = set1.union(set2)
 
     # Jaccard係数を計算
-    return len(intersection) / len(union)
+    return len(intersection) / max(len(union),1)
 
 
 class Jaccard(Metric):
@@ -195,7 +196,7 @@ def load_cosine_similarity():
     return cosine_similarity
 
 
-class CosineSim(Metric):
+class EmbSim(Metric):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = f"embsim"
@@ -207,8 +208,9 @@ class CosineSim(Metric):
     def lazy_load(self):
         from transformers import AutoTokenizer, AutoModel
         self.tokenizer = adhoc.load('_tokenizer', self.model_path)
-        self.model = adhoc.load('_model', self.model_path)
-
+        # self.model = adhoc.load('_model', self.model_path)
+        self.model = AutoModel.from_pretrained(self.model_path)
+    
     def get_embedding(self, text):
         if self.model is None:
             self.lazy_load()
@@ -222,9 +224,9 @@ class CosineSim(Metric):
     def calc_s(self, candidate: str, reference: str) -> float:
         candidate = self.get_embedding(candidate)
         reference = self.get_embedding(reference)
-        return self.cosine_similarity(candidate, reference)[0][0]
+        return float(self.cosine_similarity(candidate, reference)[0][0])
 
-CosineSim.register("embsim|vecsim")
+EmbSim.register("embsim|vecsim")
 
 # ROUGE-L
 
@@ -309,7 +311,7 @@ class BERTScore(Metric):
             lang=self.lang, 
         )
         return {
-            f"{self.nametag}": self.flatten_mean(F1.numpy().tolist(), n),
+            f"{self.nametag}": ('mean', self.flatten_mean(F1.numpy().tolist(), n)),
             f"{self.nametag}_F1{suffix}": self.flatten_mean(F1.numpy().tolist(), n),
             f"{self.nametag}_Precision{suffix}": self.flatten_mean(P.numpy().tolist(),n),
             f"{self.nametag}_Recall{suffix}": self.flatten_mean(R.numpy().tolist(),n),

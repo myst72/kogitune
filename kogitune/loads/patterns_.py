@@ -266,6 +266,9 @@ EXTRACTOR_MAP = {}
 
 class ExtractorLoader(adhoc.AdhocLoader):
 
+    def load_modules(self, path, kwargs):
+        from .extractors_base import LinesExtractor
+
     def load_default(self, path, kwargs):
         if regex_operators.search(path):
             # 正規表現の演算子が含まれれば正規表現とみなす。

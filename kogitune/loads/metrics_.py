@@ -15,6 +15,13 @@ class MetricLoader(adhoc.AdhocLoader):
         path = self.parse_k_from_path(path, kwargs)
         return path, kwargs
 
+    def load_from_map(self, path, kwargs):
+        if path.startswith('maxmean_'):
+            path = path[8:]
+            m = super().load_from_map(path, kwargs)
+            return _MaxMeanSim(m, **kwargs)
+        return super().load_from_map(path, kwargs)
+
     def load_default(self, path, kwargs):
         adhoc.print(f"Metric{path}is not found.//評価尺度{path}は見つかりません.", color='red')
         adhoc.print('Select//候補', sorted(METRICS_MAP.keys()), color='magenta', face='')
@@ -23,11 +30,8 @@ class MetricLoader(adhoc.AdhocLoader):
 MetricLoader(METRICS_MAP).register("metric")
 
 class Metric(adhoc.AdhocObject):
-    """
-    Base class for evaluators that use a model to obtain answers for generated prompts,
-    evaluate them based on specified METRICS_MAP, and calculate scores.
-    """
-
+    SCHEME = 'metric'
+    
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.scale = kwargs.get('scale', 100)
@@ -81,8 +85,35 @@ class Metric(adhoc.AdhocObject):
         global METRICS_MAP
         for scheme in schemes.split("|"):
             METRICS_MAP[scheme] = cls
-            METRICS_MAP[scheme.lower().replace('_', '')] = cls
 
+class _MaxMeanSim(Metric):
+
+    def __init__(self, inner:Metric, **kwargs):
+        super().__init__(**kwargs)
+        self.inner = inner
+        self.name = f"{self.inner.name}_maxmean"
+        self.extractor = self.load('extractor', 'textsim_split|=lines', **kwargs)
+
+    def check(self, samples):
+        return self.inner.check(samples)
+
+    def calc_s(self, candidate: str, reference: str) -> float:
+        # テキストを行ごとに分割
+        candidate_lines = self.extractor.extract(candidate)
+        reference_lines = self.extractor.extract(reference)
+
+        # 各行の最大類似度を計算
+        max_similarities = []
+        for candidate_line in candidate_lines:
+            line_similarities = [self.inner.calc_s(candidate_line, ref_line) for ref_line in reference_lines]
+            max_similarity = max(line_similarities) if line_similarities else 0  # 行ごとの最大値を取得
+            max_similarities.append(max_similarity)
+
+        # 最大類似度の平均を計算
+        average_similarity = sum(max_similarities) / len(max_similarities) if max_similarities else 0
+        return average_similarity
+
+@adhoc.reg('none')
 class NullMetric(Metric):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

@@ -37,6 +37,7 @@ from .stack import (
     kwargs_from_path,
     kwargs_from_main,
 
+    reg,
     AdhocObject,
     load,
     AdhocLoader,

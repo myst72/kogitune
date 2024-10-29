@@ -6,7 +6,7 @@ import re
 
 from .patterns_ import Extractor
 
-class LineByLineExtractor(Extractor):
+class LinesExtractor(Extractor):
     """
     行単位の処理をするフィルター
     """
@@ -24,7 +24,7 @@ class LineByLineExtractor(Extractor):
             lines.append('') # lines[0] = '' を保証 
         return lines
 
-LineByLineExtractor('lines')
+LinesExtractor.register('lines')
 
 class SentenceExtractor(Extractor):
     """
@@ -38,9 +38,9 @@ class SentenceExtractor(Extractor):
         sentences = re.split(r'(?<=[.?!]\s+|[。．？！])', text)
         return [s.strip() for s in sentences if s]
 
-SentenceExtractor('sentences')
+SentenceExtractor.register('sentences')
 
-class ChunkingLines(Extractor):
+class ChunkLines(Extractor):
     """
     行単位の処理をするフィルター
     """
@@ -87,5 +87,5 @@ class ChunkingLines(Extractor):
 
         return chunks
 
-ChunkingLines.register('chunk_lines')
+ChunkLines.register('chunk_lines')
 

@@ -60,7 +60,7 @@ class SelfCheckGPT(TextGeneration):
 
         n = adhoc.get(gen_args, "num_return_sequences|n|=6")
         if "temperature" not in gen_args:
-            adhoc.notice("temperatureを設定してね. temperature=1.0")
+            adhoc.verbose_print("temperatureを設定してね. temperature=1.0", once="temperature=1.0")
             gen_args["temperature"] = 1.0
         output_texts = model.generate(input_texts, self.progress_bar, _n=n, _do_sample=True, **gen_args)
         self.update_kwargs(samples, _model=model.modeltag, _task=self.name)

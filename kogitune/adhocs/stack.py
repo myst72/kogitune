@@ -814,6 +814,28 @@ def encode_path(path: str, tag: str, kwargs: dict):
 
 
 ## Load
+LOADER_MAP = {}
+
+def reg(name: str):
+    """
+    クラスを登録するデコレータ。
+    """
+    def decorator(cls):
+        global LOADER_MAP
+        if hasattr(cls, 'register'):
+            cls.register(name)
+        if hasattr(cls, 'SCHEME'):
+            if cls.SCHEME not in LOADER_MAP:
+                LOADER_MAP[cls.SCHEME] = {}
+            map = LOADER_MAP[cls.SCHEME]
+            for key in list_keys(name):
+                map[key] = cls
+        return cls
+    return decorator
+
+def find_loader_map(scheme: str):
+    return LOADER_MAP.get(scheme, {})
+
 
 LOADER_SCHEME = {}
 
