@@ -33,7 +33,7 @@ def list_tqdm(list_or_value, desc=None):
     return adhoc.tqdm(list_or_value, desc=desc)
 
 def is_config(path):
-    return path.endswith('.json')
+    return isinstance(path, str) and path.endswith('.json')
 
 def load_config(url_path: str) -> dict:
     if url_path.startswith('https://') or url_path.startswith('http://'):
@@ -85,8 +85,8 @@ class VerboseCounter(object):
                 self.print_sample(sample)
             return
         if self.count < self.verbose_count:
-            adhoc.print(adhoc.dump(sample), 
-                        face=f" 🐼{self.notice}[{self.count}]", color=self.color)
+            adhoc.print(self.notice, dump=sample, 
+                        face=f" 🐼[{self.count}]", color=self.color)
             self.count += 1
         else:
             self.prev_sample = sample

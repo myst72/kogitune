@@ -312,6 +312,39 @@ def dict_as_json(data: dict):
     else:
         raise ValueError()
 
+def dumps(data: dict, indent=0, key=None, suffix='', lines = None):
+    return_string = False
+    if lines is None:
+        lines = []
+        return_string = True
+    head = ' ' * indent
+    if key is not None:
+        head = f'{head}"{key}": '
+    if isinstance(data, (int, float, str, bool)) or data is None:
+        d = json.dumps(data, ensure_ascii=False)
+        lines.append(f'{head}{d}{suffix}')
+    if isinstance(data, dict):
+        if len(data) < 3:
+            d = json.dumps(data, ensure_ascii=False)
+            lines.append(f'{head}{d}{suffix}')
+        else:
+            lines.append("{")
+            for key, value in data.items():
+                dumps(value, indent+2, key, ',', lines)
+            lines.append("}"+suffix)
+    if isinstance(data, (list, tuple)):
+        if indent == 0:
+            lines.append("[")
+            for value in data:
+                dumps(value, indent+2, None, ',', lines)
+            lines.append(f"]{suffix}")
+        else:
+            d = json.dumps(data, ensure_ascii=False)
+            lines.append(f'{head}{d}{suffix}')
+    if return_string:
+        return '\n'.join(lines)
+
+
 def dump_dict_as_json(data: dict, indent=2):
     return json.dumps(dict_as_json(data), indent=indent, ensure_ascii=False)
 
@@ -348,7 +381,7 @@ def adhoc_print(*args, **kwargs):
     if dump_value:
         if isinstance(dump_value, list):
             dump_value = dump_value[:3] # 3つまでにする
-        args = args + (dump_dict_as_json(dump_value),)
+        args = args + (dumps(dump_value),)
 
     text_en = sep.join(_split_en(a) for a in args)
     text_ja = sep.join(_split_ja(a) for a in args)
@@ -865,7 +898,10 @@ class AdhocObject(object):
     def load(self, scheme, path, **kwargs):
         if isinstance(path, str) and '|' in path:
             path = self.get(kwargs, path)
-        obj = load(scheme, path, **kwargs)
+        try:
+            obj = load(scheme, path, **kwargs)
+        except KeyError as e:
+            obj = None
         setattr(self, scheme, obj)
         if hasattr(self, "pathargs") and hasattr(obj, "encode_as_json"):
             self.pathargs[scheme] = obj.encode_as_json()

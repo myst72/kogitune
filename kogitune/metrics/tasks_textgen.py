@@ -38,6 +38,7 @@ class TextGeneration(Task):
         self.update_values(samples, results)
         return results
 
+
 TextGeneration.register('|generation|0-shot|few-shots')
 
 

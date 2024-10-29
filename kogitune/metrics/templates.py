@@ -42,12 +42,31 @@ def guess_template(sample: dict):
                     {'role': 'user', 'content': '問題：駐車場に3台の車があり、2台の車が到着するとしたら、駐車場には何台の車がありますか？'}, 
                     {'role': 'assistant', 'content': '5'},
                 ],
-                "extract_pattern": r"\D[0-9]+\D"
+                "extract_pattern": r"[0-9]+"
             }
         else:
             return {
-                "prompt": "{question}\n(Answer) ",
+                "prompt": "{question}",
                 "reference": "{answer_number}",
+                "shots": [
+                    {'role': 'user', 'content': 'Question: Roger has 5 tennis balls. He buys 2 more cans of tennis balls. Each can has 3 tennis balls. How many tennis balls does he have now?'}, 
+                    {'role': 'assistant', 'content': '11'},
+                    {'role': 'user', 'content': 'Question: There were nine computers in the server room. Five more computers were installed each day, from monday to thursday. How many computers are now in the server room?'}, 
+                    {'role': 'assistant', 'content': '29'},
+                    {'role': 'user', 'content': 'Question: Leah had 32 chocolates and her sister had 42. If they ate 35, how many pieces do they have left in total?'}, 
+                    {'role': 'assistant', 'content': '39'},
+                    {'role': 'user', 'content': 'Question: Shawn has five toys. For Christmas, he got two toys each from his mom and dad. How many toys does he have now?'}, 
+                    {'role': 'assistant', 'content': '9'},
+                    {'role': 'user', 'content': 'Question: Michael had 58 golf balls. On tuesday, he lost 23 golf balls. On wednesday, he lost 2 more. How many golf balls did he have at the end of wednesday?'}, 
+                    {'role': 'assistant', 'content': '33'},
+                    {'role': 'user', 'content': 'Question: Olivia has $23. She bought five bagels for $3 each. How much money does she have left?'}, 
+                    {'role': 'assistant', 'content': '8'},
+                    {'role': 'user', 'content': 'Question: Jason had 20 lollipops. He gave Denny some lollipops. Now Jason has 12 lollipops. How many lollipops did Jason give to Denny?'}, 
+                    {'role': 'assistant', 'content': '8'},
+                    {'role': 'user', 'content': 'Question: If there are 3 cars in the parking lot and 2 more cars arrive, how many cars are in the parking lot?'}, 
+                    {'role': 'assistant', 'content': '5'},
+                ],
+                "extract_pattern": r"[0-9]+",
             }
     if has_schema(sample, 'prompt|test|entry_point|canonical_solution'):
         # HumanEval

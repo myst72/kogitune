@@ -126,7 +126,7 @@ class NullMetric(Metric):
     def check(self, samples):
         return False
 
-
+@adhoc.reg("exact_match|em")
 class ExactMatch(Metric):
     """
     コード評価用Evaluatorクラス。
@@ -137,7 +137,5 @@ class ExactMatch(Metric):
         self.name = "exact_match"
 
     def calc_s(self, candidate: str, reference: str) -> float:
-        return 1.0 if reference == candidate else 0.0
-
-ExactMatch.register("exact_match|EM")
+        return 1.0 if f'{reference}' == candidate else 0.0
 

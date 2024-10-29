@@ -23,13 +23,14 @@ class Task(adhoc.AdhocObject):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.template = adhoc.get(kwargs, 'template_config|template')
-        # self.verbose = VerboseCounter(**kwargs)
+        if is_config(self.template):
+            self.template = load_config(self.template)
         self.shots = adhoc.get(kwargs, 'shots|shot|=0')
         self.heading_messages = adhoc.get(kwargs, 'heading_messages')
         self.extra_prompt = adhoc.get(kwargs, 'extra_prompt|cot_prompt|=')
         if self.extra_prompt != '':
             self.extra_prompt = f'\n{self.extra_prompt}'
-        self.extractor = None
+        self.extractor = self.load('extractor', 'extractor|post_process', **kwargs)
         self.progress_bar = adhoc.progress_bar()
         self.init_kwargs = {**kwargs}
 
@@ -46,7 +47,7 @@ class Task(adhoc.AdhocObject):
             self.progress_bar.close()
             self.progress_bar = adhoc.progress_bar()
 
-    def prepare(self, samples: List[dict]):
+    def update_from_template(self, samples: List[dict]):
         if self.template is not None:
             template = self.template
         else:
@@ -61,9 +62,11 @@ class Task(adhoc.AdhocObject):
                 self.set_few_shots()
             if self.extractor is None:
                 if 'extract_pattern' in template:
-                    # FIXME url encodeが必要？
                     self.extractor = adhoc.load('pattern', template['extract_pattern'])
+        return template
 
+    def prepare(self, samples: List[dict]):
+        template = self.update_from_template(samples)
         for sample in samples:
             if template:
                 try:
@@ -107,6 +110,8 @@ class Task(adhoc.AdhocObject):
 
     def eval(self, model, samples: List[dict]):
         pass
+
+
 
     def calc(self, metric: Metric, samples: List[dict]):
         candidates = self.column_values(samples, "_output")
@@ -196,7 +201,7 @@ def task_eval(model_list: List[str], metrics:List[str], /, **kwargs):
             if len(samples) == 0:
                 adhoc.verbose_print("ひとつも生成されてないね")
                 break
-            
+            task.update_from_template(samples) # extractor の再読み込み
             for metric_path in listfy(metrics):
                 if metric_path == "none": 
                     break

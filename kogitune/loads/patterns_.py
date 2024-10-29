@@ -101,8 +101,8 @@ def register_pattern(pattern_config_map: dict):
     global PATTERN_DATABASE
     for names, pattern_config in pattern_config_map.items():
         for name in adhoc.list_keys(names):
-            if name in PATTERN_DATABASE:
-                adhoc.verbose_print(f'Duplicated registration {name}', dump=pattern_config)
+            # if name in PATTERN_DATABASE:
+            #     adhoc.verbose_print(f'Duplicated registration {name}', dump=pattern_config)
             PATTERN_DATABASE[name] = pattern_config
 
 def find_pattern(key):

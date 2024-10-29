@@ -53,12 +53,11 @@ def test_eval_selfcheck():
             task='selfcheck',
             model_list=['kkuramitsu/chico-0.03b'], 
             head=4,
-            test_run=2,
             dataset='kogi-jwu/jhumaneval',
             output_path='kogi',
             max_new_tokens=256,
             temperature=0.9,
-            metric='editsim|jaccard',
+            metric='editsim_maxmean|jaccard',
         )
 
 def test_eval_mgsm():
