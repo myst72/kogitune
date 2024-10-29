@@ -20,6 +20,10 @@ class MetricLoader(adhoc.AdhocLoader):
             path = path[8:]
             m = super().load_from_map(path, kwargs)
             return _MaxMeanSim(m, **kwargs)
+        if path.endswith('_maxmean'):
+            path = path[:-8]
+            m = super().load_from_map(path, kwargs)
+            return _MaxMeanSim(m, **kwargs)
         return super().load_from_map(path, kwargs)
 
     def load_default(self, path, kwargs):
@@ -31,7 +35,7 @@ MetricLoader(METRICS_MAP).register("metric")
 
 class Metric(adhoc.AdhocObject):
     SCHEME = 'metric'
-    
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.scale = kwargs.get('scale', 100)
