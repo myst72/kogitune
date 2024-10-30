@@ -13,8 +13,6 @@ class TextGeneration(Task):
         sample["_input"] = self.format(template, "prompt", sample)
         if "reference" in template:
             sample["_reference"] = self.format(template, "reference", sample)
-        # if 'test' in template:
-        #     sample["_test"] = self.format(template, "test", sample)
 
     def eval(self, model:Model, samples: List[dict]):
         prompts = self.column_values(samples, "_input")
@@ -31,7 +29,7 @@ class TextGeneration(Task):
     def calc(self, metric, samples: List[dict]):
         candidates = self.column_values(samples, "_output")
         if self.extractor:
-            candidates = [self.extractor.extract(c)[0] for c in candidates]
+            candidates = [self.extractor.extract(c)[-1] for c in candidates]
             self.update_values(samples, {"_extracted": candidates})
         references = self.column_values(samples, "_reference")
         results = metric.calc(candidates, references)

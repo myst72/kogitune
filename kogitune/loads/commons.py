@@ -53,9 +53,9 @@ def load_config(url_path: str) -> dict:
 class VerboseCounter(object):
 
     def __init__(self, head=None, /, **kwargs):
-        default_count = 1 if adhoc.is_verbose() else 0
+        default_count = 2 if adhoc.is_verbose() else 0
         self.count = 0
-        self.verbose_count = head or adhoc.get(kwargs, f"_head|verbose_count|head|={default_count}")
+        self.verbose_count = head or adhoc.get(kwargs, f"_head|verbose|head|={default_count}")
         self.color = kwargs.get('color', 'green')
         self.notice = kwargs.get('notice', '')
         self.prev_sample = None

@@ -965,6 +965,7 @@ class AdhocLoader(object):
 
     def __init__(self, MAP: dict):
         self.MAP = MAP
+        self.not_loading = True
 
     def load_from_path(self, path: str, /, kwargs):
         with kwargs_from_path(path, **kwargs) as kwargs:
@@ -994,7 +995,9 @@ class AdhocLoader(object):
     def load_from_map(self, path, kwargs):
         loader_path = self.parse_loader_path(path, kwargs)
         if loader_path not in self.MAP:
-            self.load_modules(path, kwargs)
+            if self.not_loading:
+                self.load_modules(path, kwargs)
+                self.not_loading = False
         if loader_path in self.MAP:
             return self.MAP[loader_path](**kwargs)
         simkey = find_simkey(self.MAP, loader_path, max_distance=2)
