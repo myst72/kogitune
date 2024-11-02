@@ -30,7 +30,7 @@ class TextFilter(adhoc.AdhocObject):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.scheme = 'filter'
-        self.target = self.get(kwargs, "_target|target|text_key|=text")
+        self.target = self.get(kwargs, "_target|dataset_text_field|text_key|=text")
         self.pathargs = {}
 
     def filter(self, sample: dict) -> Optional[dict]:
@@ -54,18 +54,24 @@ class TextFilter(adhoc.AdhocObject):
         for name in adhoc.list_keys(names):
             FILTER_MAP[name] = cls
 
-TextFilter.register('none')
+
+@adhoc.reg('none')
+class NoneFilter(TextFilter):
+    def filter(self, sample: dict) -> Optional[dict]:
+        return sample
 
 @adhoc.from_kwargs
 def filter_from_kwargs(**kwargs):
-    filter = kwargs.pop("filter", None)
+    filter = kwargs.pop("filter_config|filter", None)
     if filter is None:
-        filter = TextFilter(**kwargs)
+        filter = NoneFilter(**kwargs)
     else:
-        filter = adhoc.load("filter", filter, extract_prefix="filter", **kwargs)
+        if is_config(filter):
+            filter = load_config(filter)
+        filter = adhoc.load("filter", filter, **kwargs)
     return filter
 
-
+@adhoc.reg("maxmin")
 class MaxMinFilter(TextFilter):
     """
     評価関数の最大値と最小値からフィルターする
@@ -101,8 +107,7 @@ class MaxMinFilter(TextFilter):
         sample[self.record_key] = round(value, 4)
         return sample
 
-MaxMinFilter.register("maxmin")
-
+@adhoc.reg('contains')
 class ContainsFilter(TextFilter):
 
     def __init__(self, **kwargs):
@@ -116,8 +121,7 @@ class ContainsFilter(TextFilter):
             return sample
         return None
 
-ContainsFilter.register('contains')
-
+@adhoc.reg('replace')
 class ReplaceFilter(TextFilter):
     """
     置き換えフィルター
@@ -145,10 +149,9 @@ class ReplaceFilter(TextFilter):
             text = pattern.replace(text)
         return text
 
-ReplaceFilter.register('replace')
-
 ## Composition
 
+@adhoc.reg('compose')
 class ComposeFilter(TextFilter):
     """
     テキストフィルタを合成する
@@ -180,7 +183,6 @@ class ComposeFilter(TextFilter):
                 return None
         return sample
 
-ComposeFilter.register("compose")
 
 def load_filter(config, target='text'):
     if isinstance(config, TextFilter):
@@ -190,6 +192,7 @@ def load_filter(config, target='text'):
     assert isinstance(config, dict)
     return adhoc.load('filter', config['path'], **config)
 
+@adhoc.reg('choice|choose')
 class ChoiceFilter(ComposeFilter):
     """
     テキストフィルタを合成する
@@ -197,6 +200,7 @@ class ChoiceFilter(ComposeFilter):
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.path = 'choice'
 
     def filter(self, sample:dict) -> Optional[dict]:
         for f in self.filters:
@@ -205,8 +209,7 @@ class ChoiceFilter(ComposeFilter):
                 return sample2
         return None
 
-ChoiceFilter.register('choice|choose')
-
+@adhoc.reg('extract')
 class ExtractFilter(ComposeFilter):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -218,5 +221,4 @@ class ExtractFilter(ComposeFilter):
         sample[self.target] = text
         return super().filter(sample)
 
-ChoiceFilter.register('extract')
 

@@ -28,6 +28,33 @@ def test_metrics_jaccard():
     result = m.calc(candidates, references)
     assert m.nametag in result
 
+def test_metrics_dice():
+    m = kogitune.load('metric', "dice")
+    candidates = [
+        ["A B", "A B C D"],
+        ["X X", "X X X X"],
+        ["X Y", "X Y X Y"],
+    ]
+    references = [
+        "A B C", "X X X", "X Y",
+    ]
+    result = m.calc(candidates, references)
+    assert m.nametag in result
+
+def test_metrics_simpson():
+    m = kogitune.load('metric', "simpson")
+    candidates = [
+        ["A B", "A B C D"],
+        ["X X", "X X X X"],
+        ["X Y", "X Y X Y"],
+    ]
+    references = [
+        "A B C", "X X X", "X Y",
+    ]
+    result = m.calc(candidates, references)
+    assert m.nametag in result
+
+
 def test_metrics_sacrebleu():
     m = kogitune.load('metric', "sacrebleu")
     candidates = [
@@ -81,8 +108,21 @@ def test_metrics_embsim():
     result = m.calc(candidates, references)
     assert m.nametag in result
 
-def test_metrics_rouge_l():
+def test_metrics_bert_score():
     m = kogitune.load('metric', "bertscore")
+    candidates = [
+        ["A B", "A B C D"],
+        ["X X", "X X X X"],
+        ["X Y", "X Y X Y"],
+    ]
+    references = [
+        "A B C", "X X X", "X Y",
+    ]
+    result = m.calc(candidates, references)
+    assert m.nametag in result
+
+def test_metrics_codebert():
+    m = kogitune.load('metric', "codebert")
     candidates = [
         ["A B", "A B C D"],
         ["X X", "X X X X"],

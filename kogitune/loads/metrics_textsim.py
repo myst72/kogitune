@@ -12,6 +12,7 @@ def levenshtein_similarity(candidate, reference):
     return 1 - (distance / max_length)
 
 
+@adhoc.reg("editsim|levenshtein")
 class EditSim(Metric):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -20,12 +21,8 @@ class EditSim(Metric):
     def calc_s(self, candidate: str, reference: str) -> float:
         return levenshtein_similarity(candidate, reference)
 
-EditSim.register("editsim|levenshtein")
-
-
 ##
 # 字句ベース
-
 
 def jaccard_similarity(candidate, reference, tokenize):
     # テキストを単語に分割してセットに変換
@@ -39,7 +36,7 @@ def jaccard_similarity(candidate, reference, tokenize):
     # Jaccard係数を計算
     return len(intersection) / max(len(union),1)
 
-
+@adhoc.reg("jaccard")
 class Jaccard(Metric):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -50,11 +47,38 @@ class Jaccard(Metric):
     def calc_s(self, candidate: str, reference: str) -> float:
         return jaccard_similarity(candidate, reference, tokenize=self.tokenize)
 
+def dice_similarity(candidate, reference, tokenize):
+    set1 = set(tokenize(candidate))
+    set2 = set(tokenize(reference))
+    intersection = set1.intersection(set2)
+    return 2 * len(intersection) / max(len(set1) + len(set2), 1)
 
-Jaccard.register("jaccard")
+@adhoc.reg("dice")
+class Dice(Jaccard):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = "dice"
+
+    def calc_s(self, candidate: str, reference: str) -> float:
+        return dice_similarity(candidate, reference, tokenize=self.tokenize)
+
+def simpson_similarity(candidate, reference, tokenize):
+    set1 = set(tokenize(candidate))
+    set2 = set(tokenize(reference))
+    intersection = set1.intersection(set2)
+    return len(intersection) / max(min(len(set1), len(set2)), 1)
+
+@adhoc.reg("simpson")
+class Simpson(Jaccard):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = "simpson"
+
+    def calc_s(self, candidate: str, reference: str) -> float:
+        return simpson_similarity(candidate, reference, tokenize=self.tokenize)
 
 
-def cosine_similarity(candidate, reference, tokenize):
+def bag_sim(candidate, reference, tokenize):
     # テキストを単語に分割
     words1 = tokenize(candidate)
     words2 = tokenize(reference)
@@ -79,19 +103,17 @@ def cosine_similarity(candidate, reference, tokenize):
     else:
         return numerator / denominator
 
-
-class CosineSim(Metric):
+@adhoc.reg('bow')
+class BagSim(Metric):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.name = "cosine"
+        self.name = "bow"
         tokenizer_path = self.get(kwargs, "_subpath|tokenizer_path|tokenizer|=simple")
         self.tokenize = adhoc.load("tokenizer", tokenizer_path)
 
     def calc_s(self, candidate: str, reference: str) -> float:
-        return cosine_similarity(candidate, reference, tokenize=self.tokenize)
+        return bag_sim(candidate, reference, tokenize=self.tokenize)
 
-
-CosineSim.register("cosine")
 
 ## BLEU
 
@@ -151,6 +173,7 @@ def bleu_score(candidate: str, reference: str, n=4, tokenize=None):
     return bp * geometric_mean
 
 
+@adhoc.reg('bleu|blue')
 class BLEU(Metric):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -163,9 +186,7 @@ class BLEU(Metric):
         return bleu_score(candidate, reference, n=self.n, tokenize=self.tokenize)
 
 
-BLEU.register("bleu|blue")
-
-
+@adhoc.reg("sacrebleu")
 class SacreBLEU(Metric):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -188,20 +209,18 @@ class SacreBLEU(Metric):
             bleu = self.sacrebleu.corpus_bleu(candidates, references)
         return {f'{self.name}{suffix}': [bleu.score] * (len(references) // n)}
 
-SacreBLEU.register("sacrebleu")
-
 def load_cosine_similarity():
     from sklearn.metrics.pairwise import cosine_similarity
     # コサイン類似度の計算
     return cosine_similarity
 
-
+@adhoc.reg('embsim')
 class EmbSim(Metric):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = f"embsim"
         self.torch = adhoc.safe_import('torch')
-        self.model_path = self.get(kwargs, "_subpath|model_path|model|=sentence-transformers/all-MiniLM-L6-v2")
+        self.model_path = self.get(kwargs, "_subpath|model_path|model|=intfloat/multilingual-e5-small")
         self.model = None
         self.cosine_similarity = load_cosine_similarity()
 
@@ -226,10 +245,7 @@ class EmbSim(Metric):
         reference = self.get_embedding(reference)
         return float(self.cosine_similarity(candidate, reference)[0][0])
 
-EmbSim.register("embsim|vecsim")
-
 # ROUGE-L
-
 
 def lcs(X, Y):
     m = len(X)
@@ -270,6 +286,7 @@ def rouge_l(candidate, reference, tokenize):
     return f1_score
 
 
+@adhoc.reg('rouge_l')
 class ROUGE_L(Metric):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -280,11 +297,9 @@ class ROUGE_L(Metric):
     def calc_s(self, candidate: str, reference: str) -> float:
         return rouge_l(candidate, reference, tokenize=self.tokenize)
 
-
-ROUGE_L.register("rouge_l")
-
 # BERTScore
 
+@adhoc.reg("bertscore")
 class BERTScore(Metric):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -295,11 +310,14 @@ class BERTScore(Metric):
         bert_score = adhoc.safe_import('bert_score')
         self.bert_score = bert_score.score
         self.model_path = adhoc.get(kwargs, "_subpath|model_type|model_path|model")
-        self.lang = kwargs.get("lang", "en")
+        self.get(kwargs, "lang|=en", "num_layers")
 
     def calc_s(self, candidate: str, reference: str) -> float:
         P, R, F1 = self.bert_score(
-            [candidate], [reference], lang=self.lang, model_type=self.model_path
+            [candidate], [reference], 
+            model_type=self.model_path,
+            lang=self.lang, 
+            num_layers = self.num_layers,
         )
         return F1.mean().item()
 
@@ -309,6 +327,7 @@ class BERTScore(Metric):
             references, 
             model_type=self.model_path,
             lang=self.lang, 
+            num_layers = self.num_layers,
         )
         return {
             f"{self.nametag}": ('mean', self.flatten_mean(F1.numpy().tolist(), n)),
@@ -317,5 +336,18 @@ class BERTScore(Metric):
             f"{self.nametag}_Recall{suffix}": self.flatten_mean(R.numpy().tolist(),n),
         }
 
+@adhoc.reg("codebert")
+class CodeBERT(BERTScore):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name = "CodeBERT"
+        if "TOKENIZERS_PARALLELISM" not in os.environ:
+            os.environ["TOKENIZERS_PARALLELISM"] = "true"
 
-BERTScore.register("bertscore|bert_score")
+        bert_score = adhoc.safe_import('bert_score')
+        self.bert_score = bert_score.score
+        self.model_path = "microsoft/codebert-base"
+        self.lang = "en"
+        self.num_layers=12 # CodeBERTのレイヤー数を指定（通常12レイヤーです）
+        self.lang = kwargs.get("lang", "en")
+
