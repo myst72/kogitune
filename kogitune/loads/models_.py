@@ -50,7 +50,9 @@ class Model(adhoc.AdhocObject):
         return []
 
     def filter_gen_args(self, **kwargs):
-        return adhoc.safe_kwargs(kwargs, self.supported_gen_args(), unsafe='GEN')
+        args = adhoc.safe_kwargs(kwargs, self.supported_gen_args(), unsafe='GEN')
+        adhoc.verbose_print('generator_args', args, once=f'{args}')
+        return args
 
     @classmethod
     def is_valid_prompt(cls, input_text: Union[List[dict], str]):
@@ -172,7 +174,9 @@ class HFModel(TokenizerModel):
     def lazy_load(self):
         if self.lazy_kwargs is None:
             return
-        transformers = adhoc.safe_import('transformers')
+        adhoc.safe_import('accelerate')
+        adhoc.safe_import('transformers')
+        import transformers
         kwargs = self.lazy_kwargs
         self.lazy_kwargs = None
 

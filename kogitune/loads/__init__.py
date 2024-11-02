@@ -1,4 +1,4 @@
-from .tokenizers import Tokenizer
+from .tokenizers_ import Tokenizer
 from .models_ import Model
 from .datasets import DataStream, Transform
 from .tables import RecordData, LeaderBoard

@@ -1,4 +1,4 @@
-from typing import List, Union, Any, Optional
+from typing import List, Dict, Type, Union, Any, Optional
 import kogitune.adhocs as adhoc
 import json
 

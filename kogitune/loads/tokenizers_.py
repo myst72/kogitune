@@ -2,24 +2,25 @@ from typing import List, Union
 import os
 import base64
 import hashlib
-import unicodedata
 
 from .commons import *
 
+TOKENIZER_MAP: Dict[str, Type] = {}
+
 class TokenizerLoader(adhoc.AdhocLoader):
 
-    def load_from_map(self, path, kwargs):
-        if path == "simple":
-            return SimpleTokenizer(**kwargs)
-        if path.startswith("mecab") or path.startswith("janome"):
-            return JanomeTokenizer(**kwargs)
-        if path.startswith("sudachi"):
-            return SudachiTokenizer(**kwargs)
+    def load_modules(self, path, kwargs):
+        from .tokenizers_ja import SimpleTokenizer
+        from .tokenizers_code import PythonTokenizer
+
+    def load_default(self, path, kwargs):
         return HFTokenizer(**kwargs)
 
-TokenizerLoader({}).register("tokenizer")
+TokenizerLoader(TOKENIZER_MAP).register("tokenizer")
 
 class Tokenizer(adhoc.AdhocObject):
+    SCHEME='tokenizer'
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.pathargs = {}
@@ -39,18 +40,11 @@ class Tokenizer(adhoc.AdhocObject):
     def __call__(self, text: str) -> List[str]:
         return text.split(" ")
 
-
-def tokenizer_base64(tokenizer_path, length=8):
-    tokenizer_path = tokenizer_path.partition("?")[0]
-    prefix = tokenizer_path.partition("/")[0]
-    # SHA-256ハッシュを取得
-    hash_object = hashlib.sha256(tokenizer_path.encode())
-    hash_bytes = hash_object.digest()
-    # ハッシュバイト列をBase64にエンコードし、短くする
-    base64_encoded = (
-        base64.urlsafe_b64encode(hash_bytes).decode().replace("=", "")[:length]
-    )
-    return f"{prefix}({base64_encoded})"
+    @classmethod
+    def register(cls, names: str):
+        global TOKENIZER_MAP
+        for name in adhoc.list_keys(names):
+            TOKENIZER_MAP[name] = cls
 
 tokenizer_args_list = [
     "cache_dir",
@@ -94,6 +88,11 @@ def load_hftokenizer(tokenizer_path, /, **kwargs):
                 called = adhoc.function_called("AutoTokenizer.from_pretrained", 
                                             tokenizer_path, **args),
                 throw=e)
+    if adhoc.get(kwargs, 'reset_pad_token|=False'):
+        adhoc.verbose_print('pad_tokenをリセットします', tokenizer_path)
+        tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+
     # マルチトークン拡張
     if 'mte_bases' in tokenizer.init_kwargs:
         from ..datasets.tokenizers_mte import load_mte_config
@@ -121,6 +120,18 @@ def _tokenizer_from_kwargs(**kwargs):
 @adhoc.from_kwargs
 def tokenizer_from_kwargs(**kwargs):
     return _tokenizer_from_kwargs(**kwargs)
+
+def tokenizer_base64(tokenizer_path, length=8):
+    tokenizer_path = tokenizer_path.partition("?")[0]
+    prefix = tokenizer_path.partition("/")[0]
+    # SHA-256ハッシュを取得
+    hash_object = hashlib.sha256(tokenizer_path.encode())
+    hash_bytes = hash_object.digest()
+    # ハッシュバイト列をBase64にエンコードし、短くする
+    base64_encoded = (
+        base64.urlsafe_b64encode(hash_bytes).decode().replace("=", "")[:length]
+    )
+    return f"{prefix}({base64_encoded})"
 
 
 class HFTokenizer(Tokenizer):
@@ -159,114 +170,3 @@ class HFTokenizer(Tokenizer):
         return self.tokenizer.tokenize(text)
 
 
-##
-# 文字の種類によるトークンナイザー
-
-
-def char_type(char):
-    if ord(char) < 256:
-        if char.isalpha():
-            return "ALPHA"
-        if char.isdigit():
-            return "DIGIT"
-        if char in "+-*/=<>|&~^_":
-            return "OP"
-        return char
-    else:
-        cat = unicodedata.category(char)
-        name = unicodedata.name(char)
-        if cat.startswith("P"):
-            return "PUNCT"
-        if cat.startswith("S"):
-            return "EMOJI"
-        if name.startswith("HIRAGANA"):
-            return "HIRAGANA"
-        if name.startswith("KATAKANA"):
-            return "KATAKANA"
-        if name.startswith("CJK UNIFIED IDEOGRAPH"):
-            return "KANJI"
-        if name.startswith("FULL"):
-            return "FULL"
-        return "OTHER"
-
-
-def simple_tokenize(text):
-    token = []
-    result = []
-
-    def append():
-        nonlocal token, result
-        if len(token) > 0:
-            s = "".join(token)
-            if s != " ":
-                result.append(s)
-            token = []
-
-    prev_type = None
-    for char in text:
-        current_type = char_type(char)
-        if prev_type and current_type != prev_type:
-            if len(token) > 0:
-                append()
-        token.append(char)
-        prev_type = current_type
-    append()
-    return result
-
-
-class SimpleTokenizer(Tokenizer):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.name = "simple"
-
-    def __call__(self, text: str) -> List[str]:
-        token = []
-        result = []
-
-        def append():
-            nonlocal token, result
-            if len(token) > 0:
-                s = "".join(token)
-                if s != " ":
-                    result.append(s)
-                token = []
-
-        prev_type = None
-        for char in text:
-            current_type = char_type(char)
-            if prev_type and current_type != prev_type:
-                if len(token) > 0:
-                    append()
-            token.append(char)
-            prev_type = current_type
-        append()
-        return result
-
-
-class JanomeTokenizer(Tokenizer):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.name = "janome"
-        #self.pathargs = {}
-        janome = adhoc.safe_import('janome.tokenizer', 'janome')
-        self.janome = janome.Tokenizer()
-
-    def __call__(self, text: str) -> List[str]:
-        tokens = [token.surface for token in self.janome.tokenize(text)]
-        return tokens
-
-
-class SudachiTokenizer(Tokenizer):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.name = "sudachipy"
-        # self.pathargs = {}
-        adhoc.safe_import('sudachipy', "sudachipy sudachidict_core")
-        dictionary = adhoc.safe_import('sudachipy.dictionary', 'sudachidict_core')
-        tokenizer = adhoc.safe_import('sudachipy.tokenizer', 'sudachidict_core')
-        self.sudachi = dictionary.Dictionary().create()
-        self.mode = tokenizer.Tokenizer.SplitMode.C
-
-    def __call__(self, text: str) -> List[str]:
-        tokens = [m.surface() for m in self.sudachi.tokenize(text, self.mode)]
-        return tokens
