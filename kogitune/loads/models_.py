@@ -54,18 +54,18 @@ class Model(adhoc.AdhocObject):
         adhoc.verbose_print('generator_args', args, once=f'{args}')
         return args
 
-    @classmethod
-    def is_valid_prompt(cls, input_text: Union[List[dict], str]):
-        if isinstance(input_text, str):
-            return True
-        if isinstance(input_text, list) and len(input_text) > 0:
-            for msg in input_text:
-                if isinstance(msg, dict):
-                    if 'role' in msg and 'content' in msg:
-                        continue
-                return False
-            return True
-        return False
+    # @classmethod
+    # def is_valid_prompt(cls, input_text: Union[List[dict], str]):
+    #     if isinstance(input_text, str):
+    #         return True
+    #     if isinstance(input_text, list) and len(input_text) > 0:
+    #         for msg in input_text:
+    #             if isinstance(msg, dict):
+    #                 if 'role' in msg and 'content' in msg:
+    #                     continue
+    #             return False
+    #         return True
+    #     return False
     
     def get_default_messages(self, input_text:str):
         if isinstance(input_text, str):
@@ -122,19 +122,16 @@ class Model(adhoc.AdhocObject):
         帰り値
         生成されたテキスト、もしくは、そのリスト
         """
-        
-        gen_args = self.filter_gen_args(kwargs)
-
         return NotImplementedError()
 
     @classmethod
-    def regiser(cls, scheme):
+    def register(cls, scheme):
         global MODEL_MAP
         MODEL_MAP[scheme] = cls
 
 ## HF
 
-class TokenizerModel(Model):
+class HFBaseModel(Model):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.lazy_kwargs = {**kwargs}
@@ -166,8 +163,97 @@ class TokenizerModel(Model):
             ss.append(msg['content'])
         return '\n'.join(ss)
 
+@adhoc.reg('hf')
+class HFModel(HFBaseModel):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
-class HFModel(TokenizerModel):
+    def lazy_load(self):
+        if self.lazy_kwargs is None:
+            return
+        kwargs = self.lazy_kwargs
+        self.lazy_kwargs = None
+        model_path = adhoc.get(kwargs, f'_subpath|model_path|={self.path}')
+        self._model, self.pathargs = load_hfmodel(model_path, **kwargs)
+        self.device = next(self._model.parameters()).device
+        # adhoc.verbose_print(f"Model has loaded on {self.device}.//モデルは{self.device}上にロードされました")
+        # hf_token = adhoc.get(kwargs, "use_auth_token|HF_TOKEN")
+
+    @property
+    def model(self):
+        self.lazy_load()
+        return self._model
+
+    def unwrap(self):
+        self.lazy_load()
+        return self._model
+
+    def supported_gen_args(self) -> List[str]:
+        return [
+            "_n|num_return_sequences|n",
+            "_do_sample|do_sample",  # (bool, optional, defaults to False) — Whether or not to use sampling ; use greedy decoding otherwise.
+            "_max_tokens|max_new_tokens|max_tokens|=256",  # (int, optional) — The maximum numbers of tokens to generate
+            "temperature",  # (float, optional, defaults to 1.0) — The value used to modulate the next token probabilities.
+            "top_k",  # (int, optional, defaults to 50) — The number of highest probability vocabulary tokens to keep for top-k-filtering.
+            "top_p",  # (float, optional, defaults to 1.0) — If set to float < 1, only the smallest set of most probable tokens with probabilities that add up to top_p or higher are kept for generation.
+            "repetition_penalty",  # (float, optional, defaults to 1.0) — The parameter for repetition penalty. 1.0 means no penalty. See this paper for more details.
+#            "max_length",  # (int, optional, defaults to 20) — The maximum length the generated tokens can have.
+        ]
+
+    def filter_gen_args(self, **kwargs):
+        gen_args = super().filter_gen_args(**kwargs)
+        if "max_length" in gen_args and "max_new_tokens" in gen_args:
+            gen_args.pop("max_length")
+        return gen_args
+
+    def generate_s(self, prompt: str, /, **kwargs) -> Union[List[str], str]:
+        self.lazy_load()
+        gen_args = self.filter_gen_args(**kwargs)
+        prompt = self.format_text_prompt(prompt)
+        adhoc.verbose_print('[Prompt]', dump=[prompt], once="formatted_prompt")
+        if 'add_special_tokens' in kwargs:
+            model_inputs = self.tokenizer(prompt, 
+                                        add_special_tokens=kwargs['add_special_tokens'], 
+                                        return_tensors="pt").to(self.model.device)
+        else:
+            model_inputs = self.tokenizer(prompt, 
+                                        add_special_tokens=False, 
+                                        return_tensors="pt").to(self.model.device)
+        generated_ids = self.model.generate(
+            input_ids=model_inputs.input_ids,
+            attention_mask=model_inputs.attention_mask,
+            **gen_args,
+        )
+        # print('@', generated_ids)
+        length = model_inputs.input_ids.shape[1]
+        generated_ids = [
+            output_ids[length:] for output_ids in generated_ids
+        ]
+        # print('@output_ids', generated_ids)
+        response = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+        # print('@response', response)
+        return singlefy_if_single(response)
+        
+    def compute_loss(self, input_texts: Union[List[str],str], progress_bar=None) -> Union[List[float], float]:
+        torch = adhoc.safe_import('torch')
+        self.lazy_load()
+        values = []
+        for input_text in listfy(input_texts):
+            inputs = self.tokenizer(input_text, return_tensors="pt")
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+            labels = inputs["input_ids"].clone()
+            # 不要なキーを除去
+            inputs.pop("token_type_ids", None)
+            with torch.no_grad():
+                outputs = self._model(**inputs, labels=labels)
+                loss = outputs.loss
+            values.append(loss.item())
+            if progress_bar:
+                progress_bar.update(1)
+        return singlefy_if_single(values)
+
+@adhoc.reg('text-generation|pipeline')
+class HFPipelineModel(HFBaseModel):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -252,8 +338,6 @@ class HFModel(TokenizerModel):
             if progress_bar:
                 progress_bar.update(1)
         return singlefy_if_single(values)
-
-HFModel.regiser("hf")
 
 model32_kw_list = [
     "use_auth_token", 

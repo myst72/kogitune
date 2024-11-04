@@ -5,6 +5,7 @@ import json
 from .commons import *
 from .models_ import Model
 
+@adhoc.reg('openai')
 class OpenAIModel(Model):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -51,9 +52,9 @@ class OpenAIModel(Model):
         responses = [choice.message.content for choice in response.choices]
         return singlefy_if_single(responses)
 
-OpenAIModel.regiser("openai")
 
 
+@adhoc.reg('anthropic|bedrock')
 class BedrockModel(Model):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -144,55 +145,7 @@ class BedrockModel(Model):
             return response_text
 
 
-BedrockModel.regiser("anthropic")
-
-# class BedrockModel(Model):
-#     def __init__(self, model_path, kwargs):
-#         super().__init__(model_path, kwargs)
-#         try:
-#             import boto3
-
-#             self.bedrock = boto3.client(
-#                 "bedrock-runtime",
-#                 aws_access_key_id=adhoc.get(kwargs, "aws_access_key_id"],
-#                 aws_secret_access_key=adhoc.get(kwargs, "aws_secret_access_key"],
-#                 region_name=adhoc.get(kwargs, "region_name|=ap-northeast-1"],
-#             )
-#         except ModuleNotFoundError as e:
-#             raise e
-#         default_args = {
-#             "max_tokens_to_sample": adhoc.get(kwargs, "max_tokens|max_length|=512"],
-#             "temperature": adhoc.get(kwargs, "temperature|=0.2"],
-#             "top_p": adhoc.get(kwargs, "top_p|=0.95"],
-#         }
-#         self.generate_args = default_args
-
-#     def check_and_append_claude_format(self, prompt: str) -> str:
-#         ## FIXME: 改行の位置はここでいいのか？
-#         human_str = "\n\nHuman:"
-#         assistant_str = "\n\nAssistant:"
-
-#         if human_str not in prompt:
-#             prompt = human_str + prompt
-
-#         if assistant_str not in prompt:
-#             prompt += assistant_str
-
-#         return prompt
-
-#     def generate_text(self, prompt: str) -> str:
-#         prompt = self.check_and_append_claude_format(prompt)
-#         body = json.dumps(
-#             {
-#                 "prompt": prompt,
-#                 "anthropic_version": "bedrock-2023-05-31",
-#                 **self.generate_args,
-#             }
-#         )
-#         response = self.bedrock.invoke_model(body=body, modelId=self.model_path)
-#         response_body = json.loads(response.get("body").read())
-#         return response_body.get("completion")
-
+@adhoc.reg('google')
 class GoogleModel(Model):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -228,5 +181,3 @@ class GoogleModel(Model):
                 )
             )
             return response.text
-
-GoogleModel.regiser("google")

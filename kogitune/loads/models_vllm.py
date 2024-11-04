@@ -1,8 +1,9 @@
 import math
 from .commons import *
-from .models_ import TokenizerModel 
+from .models_ import HFBaseModel 
 
-class vLLMModel(TokenizerModel):
+@adhoc.reg('vllm')
+class vLLMModel(HFBaseModel):
     def __init__(self, **kwargs):
         vllm = adhoc.safe_import('vllm')
         self.SamplingParams = vllm.SamplingParams
@@ -76,7 +77,6 @@ class vLLMModel(TokenizerModel):
                 progress_bar.update(1)
         return singlefy_if_single(values)
 
-vLLMModel.regiser("vllm")
 
 """
 ・n : プロンプトに対して返される出力シーケンス数

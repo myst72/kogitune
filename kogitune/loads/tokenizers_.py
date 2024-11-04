@@ -88,6 +88,12 @@ def load_hftokenizer(tokenizer_path, /, **kwargs):
                 called = adhoc.function_called("AutoTokenizer.from_pretrained", 
                                             tokenizer_path, **args),
                 throw=e)
+
+    # if 'add_special_tokens' in kwargs:
+    #     print('@', tokenizer.add_special_tokens)
+    #     adhoc.verbose_print('add_special_tokens =', kwargs['add_special_tokens'], once='add_specail_tokens')
+    #     tokenizer.add_special_tokens =  kwargs['add_special_tokens']
+
     if adhoc.get(kwargs, 'reset_pad_token|=False'):
         adhoc.verbose_print('pad_tokenをリセットします', tokenizer_path)
         tokenizer.pad_token = tokenizer.eos_token
