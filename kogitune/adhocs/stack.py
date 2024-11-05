@@ -328,13 +328,13 @@ def dumps(data: dict, indent=0, key=None, suffix='', lines = None):
             d = json.dumps(data, ensure_ascii=False)
             lines.append(f'{head}{d}{suffix}')
         else:
-            lines.append("{")
+            lines.append(head+"{")
             for key, value in data.items():
                 dumps(value, indent+2, key, ',', lines)
             lines.append("}"+suffix)
     if isinstance(data, (list, tuple)):
         if indent == 0:
-            lines.append("[")
+            lines.append(head+"[")
             for value in data:
                 dumps(value, indent+2, None, ',', lines)
             lines.append(f"]{suffix}")

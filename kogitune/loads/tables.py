@@ -1,6 +1,7 @@
 from typing import List
 import os
 import json
+import math
 import numpy as np
 import pandas as pd
 from ..loads.commons import *
@@ -192,6 +193,7 @@ class RecordData(adhoc.AdhocObject):
                 sample[key] = outputs[i]
 
 def safe_sample_matched(sample:dict, expr):
+    #print('@expr', expr, sample)
     return eval(expr, None, {'sample': sample})
 
 
@@ -269,6 +271,8 @@ class LeaderBoard(object):
         label_query = None
         if aggfunc.startswith('AUC:') or aggfunc.startswith('ROC:'):
             label_query = aggfunc[4:]
+            if "sample[" not in label_query:
+                label_query = f'sample["{label_query}"]'
 
         for key, scores in grouped_scores.items():
             model, datatag, group = key
@@ -335,8 +339,14 @@ class LeaderBoard(object):
     def calc_auroc(self, value_name, scores, labels, record):
         adhoc.safe_import('sklearn', 'scikit-learn')
         from sklearn.metrics import roc_curve, auc
-        fpr_list, tpr_list, thresholds = roc_curve(labels, scores)
-        adhoc.verbose_print(f'閾値 {value_name}', thresholds)
+        _labels = []
+        _scores = []
+        for s, l in zip(scores, labels):
+            if not math.isnan(s):
+                _labels.append(l)
+                _scores.append(s)
+        fpr_list, tpr_list, thresholds = roc_curve(_labels, _scores)
+        #adhoc.verbose_print(f'閾値 {value_name}', thresholds)
         auroc = auc(fpr_list, tpr_list)
         fpr95 = fpr_list[np.where(tpr_list >= 0.95)[0][0]]
         tpr05 = tpr_list[np.where(fpr_list <= 0.05)[0][-1]]

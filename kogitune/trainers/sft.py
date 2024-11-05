@@ -1,7 +1,7 @@
 from ..loads.commons import *
 
 def finetune(**kwargs):
-    trl = adhoc.safe_import('trl')
+    adhoc.safe_import('trl')
     import trl
     model = adhoc.load('_model', adhoc.get(kwargs, 'model_path|!!'), **kwargs)
     tokenizer = adhoc.load('_tokenizer', adhoc.get(kwargs, 'tokenizer_path|model_path|!!'))

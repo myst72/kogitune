@@ -398,7 +398,9 @@ def load_hfmodel4bit(model_path, /, **kwargs):
 
 
 def load_hfmodel(model_path, /, **kwargs):
-    torch = adhoc.safe_import('torch')
+    adhoc.safe_import('torch')
+    #adhoc.safe_import('accerarate')
+    import torch
 
     if "use_auth_token" not in kwargs:
         kwargs["use_auth_token"] = adhoc.get(os.environ, "HF_TOKEN")
@@ -411,7 +413,7 @@ def load_hfmodel(model_path, /, **kwargs):
     if kwargs.get("attn_implementation") == "flash_attention_2":
         kwargs["torch_dtype"] = torch.bfloat16
     if "torch_dtype" in kwargs:
-        kwargs["torch_dtype"] = parse_dtype(kwargs["torch_dtype"])
+        kwargs["torch_dtype"] = parse_dtype(kwargs["torch_dtype"], torch)
 
     if adhoc.get(kwargs, "use_4bit|=False"):
         return load_hfmodel4bit(model_path, **kwargs)
@@ -420,7 +422,7 @@ def load_hfmodel(model_path, /, **kwargs):
 
 @adhoc.parse_value
 def parse_dtype(dtype, torch=None):
-    if torch:
+    if not torch:
         torch = adhoc.safe_import('torch')
 
     dtype_mapping = {
@@ -440,6 +442,7 @@ def parse_dtype(dtype, torch=None):
         "int8": torch.int8,
         "uint8": torch.uint8,
         "bool": torch.bool,
+        "auto": "auto",
     }
     if isinstance(dtype, str):
         if dtype in dtype_mapping:

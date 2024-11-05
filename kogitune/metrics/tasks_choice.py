@@ -39,7 +39,7 @@ class MIA(Task):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = 'mia'
-        self.input_key = adhoc.get(kwargs, 'input_key|text_key')
+        self.input_key = adhoc.get(kwargs, 'dataset_text_field|input_key|text_key')
 
     def guess_template(self, sample):
         if self.input_key and self.input_key in sample:
@@ -97,6 +97,14 @@ class MIA(Task):
                 scores[f'{int(ratio*100)}'] = np.mean(topk).item()
             sample['_mink_prob'] = scores
 
+            ## lastk
+            scores = {}
+            for ratio in [0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]:
+                k_length = int(len(token_log_probs) * ratio)
+                lastk = list(token_log_probs.cpu())[-k_length:]
+                scores[f'{int(ratio*100)}'] = np.mean(lastk).item()
+            sample['_lastk_prob'] = scores
+
             ## mink++
             scores = {}
             mink_plus = (token_log_probs - mu) / sigma.sqrt()
@@ -144,6 +152,7 @@ class MIA(Task):
 
 MIA.register('mia|loss|perplexity')
 
+@adhoc.reg('loss')
 class Loss(Metric):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -160,8 +169,7 @@ class Loss(Metric):
     def recalc(self, result):
         return float(result)
 
-Loss.register('loss')
-
+@adhoc.reg('perplexity|ppl')
 class Perplexity(Loss):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -171,8 +179,7 @@ class Perplexity(Loss):
     def recalc(self, result):
         return math.exp(result)
 
-Perplexity.register('perplexity|ppl')
-
+@adhoc.reg('mink|mink_prob')
 class MinKProb(Loss):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -183,9 +190,7 @@ class MinKProb(Loss):
     def recalc(self, result:dict):
         return result[self.k]
 
-
-MinKProb.register("mink_prob")
-
+@adhoc.reg('mink++|mink++prob')
 class MinKPlusPlus(Loss):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -196,4 +201,13 @@ class MinKPlusPlus(Loss):
     def recalc(self, result:dict):
         return result[self.k]
 
-MinKPlusPlus.register("mink++")
+@adhoc.reg('lastk|lastk_prob')
+class LastKProb(Loss):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.k = str(kwargs.get("k", 10))
+        self.name =f"lastk{self.k}_prob"
+        self.score_key = '_lastk_prob'
+
+    def recalc(self, result:dict):
+        return result[self.k]
