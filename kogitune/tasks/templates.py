@@ -102,7 +102,7 @@ def guess_template(sample: dict):
                     {'role': 'assistant', 'content': 'B'},
                     {'role': 'user', 'content': '質問: 望月の歌の作者は？\n選択肢: [A] 紫式部 [B] 高野辰之 [C] 藤原道長 [D] 瀧廉太郎\n'}, 
                     {'role': 'assistant', 'content': 'C'},
-                    {'role': 'user', 'content': '質問: 単位を落とすことは？\n選択肢: [A] 落胆 [B] 楽たん [C] 楽単 [D] 落単\n正しいものを[A]〜[D]から選べ'}, 
+                    {'role': 'user', 'content': '質問: 一番大きな数は？\n選択肢: [A] 0 [B] 3 [C] 5 [D] 9\n正しいものを[A]〜[D]から選べ\n'}, 
                     {'role': 'assistant', 'content': 'D'},
                 ],
                 "extract_pattern": r"\b[A-D]\b",
