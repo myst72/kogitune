@@ -89,6 +89,10 @@ def load_hftokenizer(tokenizer_path, /, **kwargs):
                                             tokenizer_path, **args),
                 throw=e)
 
+    if not hasattr(tokenizer, 'chat_template') or tokenizer.chat_template is None:
+        adhoc.verbose_print('chat_templateをセットします', once='chat_template')
+        tokenizer.chat_template = "{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}"
+
     # if 'add_special_tokens' in kwargs:
     #     print('@', tokenizer.add_special_tokens)
     #     adhoc.verbose_print('add_special_tokens =', kwargs['add_special_tokens'], once='add_specail_tokens')

@@ -753,6 +753,10 @@ def get_formatted_text(sample: dict, key_or_format: str):
         return safe_format(key_or_format, **sample)
     return sample[key_or_format]
 
+### columns
+
+
+
 
 ### main arguments
 
@@ -949,6 +953,8 @@ def load(scheme: Union[str, dict], path: Optional[Union[str, dict]] = None, /, *
         if use_unwrap:
             return obj.unwrap()
         return obj
+    if '_default' in kwargs:
+        return kwargs['_default']
     raise KeyError(scheme)
 
 def load_class(class_path, check=None):
@@ -1017,6 +1023,8 @@ class AdhocLoader(object):
         return path
 
     def load_default(self, path, kwargs):
+        if '_default' in kwargs:
+            return kwargs['_default']
         debug_print(list(self.MAP.keys()))
         raise KeyError(path)
 

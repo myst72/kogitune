@@ -18,3 +18,8 @@ def pretrain_cli(**kwargs):
     with adhoc.kwargs_from_stacked(**kwargs) as kwargs:
         return pretrain(**kwargs)
 
+@adhoc.cli
+def finetune_cli(**kwargs):
+    from .sft import finetune
+    with adhoc.kwargs_from_stacked(**kwargs) as kwargs:
+        return finetune(**kwargs)

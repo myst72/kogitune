@@ -47,16 +47,41 @@ class Metric(adhoc.AdhocObject):
     def check(self, samples):
         return True
 
+    def append_results(self, key:str, value: Any):
+        if not hasattr(self, 'additional_results'):
+            self.additional_results = {}
+        if key not in self.additional_results:
+            self.additional_results[key] = []
+        self.additional_results[key].append(value)
+
+    def results(self, key:str, value: Any):
+        results = {key: value}
+        if hasattr(self, 'additional_results'):
+            for akey, avalue in self.additional_results.items():
+                if akey.startswith('_'):
+                    results[f'{key}{akey}'] = avalue
+                else:
+                    results[f'{akey}'] = avalue
+        return results
+
     def calc(self, candidates:List[str], references:List[str], suffix='')->dict:
         candidates = listfy(candidates)
         references = listfy(references)
-        if len(candidates) > 0 and isinstance(candidates[0], list):
-            n = len(candidates[0])
+        if isinstance(candidates[0], list):
             flat_candidates = []
             flat_references = []
+            n = len(candidates[0])
             for candidate, reference in zip(candidates, references):
                 flat_candidates.extend(candidate)
                 flat_references.extend([reference] * n)
+            return self.calc_m(flat_candidates, flat_references, n, suffix)
+        if isinstance(references[0], list):
+            flat_candidates = []
+            flat_references = []
+            n = len(references[0])
+            for candidate, reference in zip(candidates, references):
+                flat_references.extend([candidate] * n)
+                flat_candidates.extend(reference)
             return self.calc_m(flat_candidates, flat_references, n, suffix)
         return self.calc_m(candidates, references, 1, suffix)
     
@@ -64,7 +89,9 @@ class Metric(adhoc.AdhocObject):
         scores = []
         for candidate, reference in zip(listfy(candidates), listfy(references)):
             scores.append(self.calc_s(candidate, reference))
-        return {f"{self.nametag}{suffix}": ('mean', self.flatten_mean(scores, n))}
+        return self.results(f"{self.nametag}{suffix}", 
+                            ('mean', self.flatten_mean(scores, n))) 
+
 
     def flatten_mean(self, scores:List[float], n):
         if n == 1:
@@ -95,8 +122,8 @@ class _MaxMeanSim(Metric):
     def __init__(self, inner:Metric, **kwargs):
         super().__init__(**kwargs)
         self.inner = inner
-        self.name = f"{self.inner.name}_maxmean"
         self.extractor = self.load('extractor', 'textsim_split|=lines', **kwargs)
+        self.name = f"{self.inner.name}_{self.extractor.path}"
 
     def check(self, samples):
         return self.inner.check(samples)
@@ -113,9 +140,11 @@ class _MaxMeanSim(Metric):
             max_similarity = max(line_similarities) if line_similarities else 0  # 行ごとの最大値を取得
             max_similarities.append(max_similarity)
 
+        self.append_results('_sim', list(zip(candidate_lines, max_similarities)))
+
         # 最大類似度の平均を計算
-        average_similarity = sum(max_similarities) / len(max_similarities) if max_similarities else 0
-        return average_similarity
+        mean_similarity = sum(max_similarities) / len(max_similarities) if max_similarities else 0
+        return mean_similarity
 
 @adhoc.reg('none')
 class NullMetric(Metric):

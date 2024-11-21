@@ -3,16 +3,16 @@ from ..loads.commons import *
 def finetune(**kwargs):
     adhoc.safe_import('trl')
     import trl
+    dataset = load_dataset(**kwargs)
     model = adhoc.load('_model', adhoc.get(kwargs, 'model_path|!!'), **kwargs)
     tokenizer = adhoc.load('_tokenizer', adhoc.get(kwargs, 'tokenizer_path|model_path|!!'))
-    dataset = load_dataset(adhoc.get(kwargs, "dataset", dataset), **kwargs)
     
     training_args = get_finetune_args(**kwargs)
     trainer = trl.SFTTrainer(
         model=model,
+        tokenizer=tokenizer,
         args=training_args,
         train_dataset=dataset,
-        tokenizer=tokenizer,
     )
     trainer.train()
 
@@ -43,41 +43,65 @@ def inspect_model(model):
     # print(model.lm_head)
 
 
-def load_dataset(path, **kwargs):
+def load_dataset(**kwargs):
     # ところでSFT Trainerに渡したdatasetってどうなるの？
     # https://zenn.dev/spiralai/articles/cb8606fa0700f0
     from datasets import Dataset
-    stream = adhoc.load('datastream', path, **kwargs)
-    samples = [sample for sample in stream.samples()]
-    if 'messages' in samples[0]:
-        data = {
-            "messages": record.extract_values("messages")
-        }
-        return Dataset.from_dict(data)
-    else:
+    prompts=[]
+    completions=[]
+    for path in adhoc.get_list(kwargs, "dataset|dataset_list|files|!!"):
+        stream = adhoc.load('datastream', path, **kwargs)
+        samples = [sample for sample in stream.samples()]
+        # if 'messages' in samples[0]:
+        #     # FIXME
+        #     data = {
+        #         "messages": adhoc.extract_values("messages")
+        #     }
+        #     return Dataset.from_dict(data)
         template = guess_template(samples[0])
-        data = apply_template(samples, template)
-        return Dataset.from_dict(data)
+        apply_template(samples, template, prompts, completions)
+    return Dataset.from_dict({
+        'prompt': prompts,
+        'completion': completions
+    })
 
-def guess_template(sample:dict):
+def apply_template(samples:List[dict], template:str, prompts:List[str], completions:List[str]):
+    prompt_fmt = template['prompt']
+    completion_fmt = template['completion']
+    try:
+        for sample in samples:
+            prompts.append(adhoc.format(prompt_fmt, **sample))
+            completions.append(adhoc.format(completion_fmt, **sample))
+    except KeyError as e:
+        adhoc.exit(throw=e)
+
+
+def has_schema(data: dict, keys:str):
+    for key in keys.split('|'):
+        if key not in data:
+            return False
+    return True
+
+def contains_japanese(text: str) -> bool:
+    for char in text:
+        if '\u3040' <= char <= '\u30FF' or '\u4E00' <= char <= '\u9FFF' or '\uFF66' <= char <= '\uFF9D':
+            return True
+    return False
+
+def guess_template(sample: dict):
+    if has_schema(sample, 'instruction|input|output'):
+        # Alpaca形式
+        return {
+            "prompt": "{instruction}\n{input}",
+            "completion": "{output}",
+        }
     return {
         'prompt': '{prompt}',
         'completion': '{completion}'
     }
 
-def apply_template(samples, template):
-    prompts=[]
-    completions=[]
-    try:
-        for sample in samples:
-            prompts.append(template['prompt'].format(**sample))
-            completions.append(template['completion'].format(**sample))
-    except KeyError as e:
-        adhoc.exit(throw=e)
-    return {
-        'prompt': prompts,
-        'completion': completions
-    }
+
+
 
 def format_chatml(messages: List[str]) -> str:
     """

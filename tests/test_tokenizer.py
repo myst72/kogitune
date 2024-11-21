@@ -4,12 +4,26 @@ import tempfile
 import pytest
 
 def test_tokenizer():
-    tokenizer = kogitune.load('tokenizer', "llm-jp/llm-jp-3-1.8b")
+    tokenizer = kogitune.load('tokenizer', "kkuramitsu/chico-0.03b")
     assert(isinstance(tokenizer('こんにちは世界, hello world'), list))
+
+def test_chat_template():
+    chat = [
+        {"role": "user", "content": "Hello, how are you?"},
+        {"role": "assistant", "content": "I'm doing great. How can I help you today?"},
+        {"role": "user", "content": "I'd like to show off how chat templating works!"},
+    ]
+    tokenizer = kogitune.load('_tokenizer', 'kkuramitsu/tinycodellama-jp-0.13b-50k')
+    assert tokenizer.chat_template is not None
+    assert isinstance(tokenizer.apply_chat_template(chat, tokenize=False), str)
 
 def test_tokenizer_simple():
     tokenizer = kogitune.load('tokenizer:simple')
     assert(isinstance(tokenizer('こんにちは世界, hello world'), list))
+
+def test_tokenizer_python():
+    tokenizer = kogitune.load('tokenizer:python')
+    assert(isinstance(tokenizer('a=1'), list))
 
 def has_module(name):
     import importlib

@@ -70,7 +70,8 @@ class Model(adhoc.AdhocObject):
     def get_default_messages(self, input_text:str):
         if isinstance(input_text, str):
             return [
-                {"role": "user", "content": input_text}
+                {"role": "user", "content": input_text},
+#                {"role": "assistant", "content": ""},
             ]
         return input_text
 
@@ -153,13 +154,13 @@ class HFBaseModel(Model):
             return
         pass
 
-    def format_text_prompt(self, input_text:Union[List[str],str]) -> str:
-        if isinstance(input_text, str):
-            return input_text
+    def format_text_prompt(self, prompt:Union[List[str],str]) -> str:
+        if isinstance(prompt, str):
+            return prompt
         if self.tokenizer.chat_template:
-            return self.tokenizer.apply_chat_template(input_text, tokenize=False)
+            return self.tokenizer.apply_chat_template(prompt, tokenize=False)
         ss=[]
-        for msg in input_text:
+        for msg in prompt:
             ss.append(msg['content'])
         return '\n'.join(ss)
 
@@ -176,8 +177,7 @@ class HFModel(HFBaseModel):
         model_path = adhoc.get(kwargs, f'_subpath|model_path|={self.path}')
         self._model, self.pathargs = load_hfmodel(model_path, **kwargs)
         self.device = next(self._model.parameters()).device
-        # adhoc.verbose_print(f"Model has loaded on {self.device}.//モデルは{self.device}上にロードされました")
-        # hf_token = adhoc.get(kwargs, "use_auth_token|HF_TOKEN")
+        adhoc.verbose_print(f"Model has loaded on {self.device}.//モデルは{self.device}上にロードされました")
 
     @property
     def model(self):
@@ -210,28 +210,21 @@ class HFModel(HFBaseModel):
         self.lazy_load()
         gen_args = self.filter_gen_args(**kwargs)
         prompt = self.format_text_prompt(prompt)
-        adhoc.verbose_print('[Prompt]', dump=[prompt], once="formatted_prompt")
-        if 'add_special_tokens' in kwargs:
-            model_inputs = self.tokenizer(prompt, 
-                                        add_special_tokens=kwargs['add_special_tokens'], 
-                                        return_tensors="pt").to(self.model.device)
-        else:
-            model_inputs = self.tokenizer(prompt, 
-                                        add_special_tokens=False, 
-                                        return_tensors="pt").to(self.model.device)
+        adhoc.verbose_print(f'[フォーマットプロンプト]\n{prompt}', once="formatted_prompt")
+        model_inputs = self.tokenizer(prompt, 
+                                    return_tensors="pt").to(self.model.device)
+        if 'pad_token_id' not in gen_args:
+            gen_args['pad_token_id'] = self.tokenizer.eos_token_id
         generated_ids = self.model.generate(
             input_ids=model_inputs.input_ids,
             attention_mask=model_inputs.attention_mask,
             **gen_args,
         )
-        # print('@', generated_ids)
         length = model_inputs.input_ids.shape[1]
         generated_ids = [
             output_ids[length:] for output_ids in generated_ids
         ]
-        # print('@output_ids', generated_ids)
         response = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
-        # print('@response', response)
         return singlefy_if_single(response)
         
     def compute_loss(self, input_texts: Union[List[str],str], progress_bar=None) -> Union[List[float], float]:

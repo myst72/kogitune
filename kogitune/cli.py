@@ -23,7 +23,7 @@ from .trainers.cli import (
     pretrain_cli as pretrain,    
 )
 
-from .metrics.cli import (
+from .tasks.cli import (
     eval_cli as eval,
     leaderboard_cli as leaderboard,
 )
