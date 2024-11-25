@@ -66,10 +66,16 @@ class SelfCheckGPT(TextGeneration):
 
     def calc(self, metric, samples: List[dict]):
         candidates = self.column_values(samples, "_output")
+        list_samples = self.column_values(samples, "_samples")
         if self.extractor:
             candidates = [self.extractor.extract(c)[-1] for c in candidates]
             self.update_values(samples, {"_extracted": candidates})
-        _samples = self.column_values(samples, "_samples")
-        results = metric.calc(candidates, _samples)
+            _list_samples = []
+            for _samples in list_samples:
+                _samples = [self.extractor.extract(c)[-1] for c in _samples]
+                _list_samples.append(_samples)
+            list_samples = _list_samples
+            adhoc.verbose_print("extracted", candidates[0], list_samples[0])
+        results = metric.calc(candidates, list_samples)
         self.update_values(samples, results)
         return results
