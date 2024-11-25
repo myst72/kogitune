@@ -25,7 +25,7 @@ setup(
               'kogitune.filters',
               'kogitune.data',
               'kogitune.trainers',
-              'kogitune.metrics'],
+              'kogitune.tasks'],
     package_dir={"kogitune": "kogitune"},
     package_data={"kogitune": ["*/*"]},
     install_requires=_requires_from_file("requirements.txt"),
