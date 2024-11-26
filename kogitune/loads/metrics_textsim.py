@@ -104,7 +104,7 @@ def bag_sim(candidate, reference, tokenize):
         return numerator / denominator
 
 @adhoc.reg('bow')
-class BagSim(Metric):
+class BowSim(Metric):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.name = "bow"
@@ -320,6 +320,15 @@ class BERTScore(Metric):
             num_layers = self.num_layers,
         )
         return F1.mean().item()
+
+    def calc_ss(self, candidate: str, references: List[str]) -> List[float]:
+        _, _, F1 = self.bert_score(
+            [candidate]*len(references), references, 
+            model_type=self.model_path,
+            lang=self.lang, 
+            num_layers = self.num_layers,
+        )
+        return F1.numpy().tolist()
 
     def calc_m(self, candidates, references, n=1, suffix=''):
         P, R, F1 = self.bert_score(

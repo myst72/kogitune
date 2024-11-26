@@ -4,7 +4,7 @@ from .stack import (
     kwargs_from_stacked,
 
     dump_dict_as_json as dump,
-    once,
+    once, is_once,
     adhoc_print as print,
     is_verbose,
     verbose_print,

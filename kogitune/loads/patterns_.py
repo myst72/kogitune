@@ -268,6 +268,7 @@ class ExtractorLoader(adhoc.AdhocLoader):
 
     def load_modules(self, path, kwargs):
         from .extractors_base import LinesExtractor
+        from .extractors_py import PythonSyntacticExtractor
 
     def load_default(self, path, kwargs):
         if regex_operators.search(path):

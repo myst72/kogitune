@@ -10,8 +10,10 @@ class TaskLoader(adhoc.AdhocLoader):
 
     def load_modules(self, path, kwargs):
         from .tasks_textgen import TextGeneration
+        from .tasks_selfcheck import SelfCheckGPT
         from .tasks_code import CodeEval
         from .tasks_choice import QAChoice
+        from .tasks_mia import MIA
 
 TaskLoader(TASK_MAP).register("task")
 
@@ -30,11 +32,12 @@ class Task(adhoc.AdhocObject):
         self.extra_prompt = adhoc.get(kwargs, 'extra_prompt|cot_prompt|=')
         if self.extra_prompt != '':
             self.extra_prompt = f'\n{self.extra_prompt}'
-        self.extractor = self.load('extractor', 
-                                   'extractor|post_process', 
-                                   **kwargs | {'_default': None})
+        self.init_extractor(**kwargs)
         self.progress_bar = adhoc.progress_bar()
         self.init_kwargs = {**kwargs}
+    
+    def init_extractor(self, **kwargs):
+        self.extractor = self.load('extractor', 'extractor', **kwargs)
 
     @property
     def tasktag(self):
@@ -157,7 +160,6 @@ class Task(adhoc.AdhocObject):
         global TASK_MAP
         for scheme in schemes.split("|"):
             TASK_MAP[scheme] = cls
-            TASK_MAP[scheme.replace('_', '')] = cls
 
 
 def task_eval(model_list: List[str], metrics:List[str], /, **kwargs):

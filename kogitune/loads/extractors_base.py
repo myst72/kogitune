@@ -4,14 +4,26 @@ import re
 
 ## 行単位の処理
 
-from .patterns_ import Extractor
+@adhoc.reg("none")
+class NoneExtractor(Extractor):
+    """
+    行単位の処理をするフィルター
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.name='none'
 
+    def extract(self, text:str) -> List[str]:
+        return [text]
+
+@adhoc.reg("lines")
 class LinesExtractor(Extractor):
     """
     行単位の処理をするフィルター
     """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.name='lines'
 
     def extract(self, text:str) -> List[str]:
         lines = []
@@ -24,22 +36,21 @@ class LinesExtractor(Extractor):
             lines.append('') # lines[0] = '' を保証 
         return lines
 
-LinesExtractor.register('lines')
-
+@adhoc.reg("sentences")
 class SentenceExtractor(Extractor):
     """
     行単位の処理をするフィルター
     """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.name='sentences'
 
     def extract(self, text:str) -> List[str]:
         # 英語と日本語の文末句読点を含む正規表現
         sentences = re.split(r'(?<=[.?!]\s+|[。．？！])', text)
         return [s.strip() for s in sentences if s]
 
-SentenceExtractor.register('sentences')
-
+@adhoc.reg("chunks|chunk_lines")
 class ChunkLines(Extractor):
     """
     行単位の処理をするフィルター
@@ -47,6 +58,7 @@ class ChunkLines(Extractor):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.get(kwargs, 'max_length|=256')
+        self.name='chunk_lines'
 
     def extract(self, text:str) -> List[str]:
         """
@@ -86,6 +98,4 @@ class ChunkLines(Extractor):
             chunks.append("\n".join(current_chunk))
 
         return chunks
-
-ChunkLines.register('chunk_lines')
 

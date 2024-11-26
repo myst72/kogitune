@@ -16,15 +16,20 @@ class MetricLoader(adhoc.AdhocLoader):
         return path, kwargs
 
     def load_from_map(self, path, kwargs):
-        if path.startswith('maxmean_'):
-            path = path[8:]
-            m = super().load_from_map(path, kwargs)
-            return _MaxMeanSim(m, **kwargs)
+        if ':' in path:
+            path, _, suffix = path.partition(':')
+            suffix = f':{suffix}'
+        else:
+            suffix = ''
         if path.endswith('_maxmean'):
-            path = path[:-8]
+            path = path[:-8] + suffix
             m = super().load_from_map(path, kwargs)
             return _MaxMeanSim(m, **kwargs)
-        return super().load_from_map(path, kwargs)
+        if path.endswith('_lines'):
+            path = path[:-6] + suffix
+            m = super().load_from_map(path, kwargs)
+            return _MaxMeanSim(m, **kwargs)
+        return super().load_from_map(path + suffix, kwargs)
 
     def load_default(self, path, kwargs):
         adhoc.print(f"Metric{path}is not found.//評価尺度{path}は見つかりません.", color='red')
@@ -80,8 +85,8 @@ class Metric(adhoc.AdhocObject):
             flat_references = []
             n = len(references[0])
             for candidate, reference in zip(candidates, references):
-                flat_references.extend([candidate] * n)
-                flat_candidates.extend(reference)
+                flat_candidates.extend([candidate] * n)
+                flat_references.extend(reference)
             return self.calc_m(flat_candidates, flat_references, n, suffix)
         return self.calc_m(candidates, references, 1, suffix)
     
@@ -91,7 +96,6 @@ class Metric(adhoc.AdhocObject):
             scores.append(self.calc_s(candidate, reference))
         return self.results(f"{self.nametag}{suffix}", 
                             ('mean', self.flatten_mean(scores, n))) 
-
 
     def flatten_mean(self, scores:List[float], n):
         if n == 1:
@@ -110,12 +114,18 @@ class Metric(adhoc.AdhocObject):
 
     def calc_s(self, candidate:str, reference:str) -> float:
         return 0
-    
+
+    def calc_ss(self, candidate:str, references:List[str]) -> List[float]:
+        assert isinstance(candidate, str)
+        return [self.calc_s(candidate, r) for r in references]
+
     @classmethod
     def register(cls, schemes):
         global METRICS_MAP
         for scheme in schemes.split("|"):
             METRICS_MAP[scheme] = cls
+
+adhoc.once
 
 class _MaxMeanSim(Metric):
 
@@ -124,21 +134,32 @@ class _MaxMeanSim(Metric):
         self.inner = inner
         self.extractor = self.load('extractor', 'textsim_split|=lines', **kwargs)
         self.name = f"{self.inner.name}_{self.extractor.path}"
+        self.is_once_verbose = True
 
     def check(self, samples):
         return self.inner.check(samples)
 
     def calc_s(self, candidate: str, reference: str) -> float:
-        # テキストを行ごとに分割
         candidate_lines = self.extractor.extract(candidate)
-        reference_lines = self.extractor.extract(reference)
+        reference_lines = [s for s in set(self.extractor.extract(reference)) if len(s) > 1]
 
         # 各行の最大類似度を計算
         max_similarities = []
+        cache = {'': 1.0}
+        if self.is_once_verbose:
+            adhoc.verbose_print(f'[{self.name}] n_lines={len(reference_lines)}')
         for candidate_line in candidate_lines:
-            line_similarities = [self.inner.calc_s(candidate_line, ref_line) for ref_line in reference_lines]
+            if candidate_line in cache:
+                max_similarities.append(cache[candidate_line])
+                continue
+            line_similarities = self.inner.calc_ss(candidate_line, reference_lines)
+            #line_similarities = [self.inner.calc_s(candidate_line, ref_line) for ref_line in reference_lines]
             max_similarity = max(line_similarities) if line_similarities else 0  # 行ごとの最大値を取得
+            cache[candidate_line] = max_similarity
             max_similarities.append(max_similarity)
+            if self.is_once_verbose:
+                adhoc.verbose_print(candidate_line, '#', max_similarity, face=' ')
+        self.is_once_verbose=False
 
         self.append_results('_sim', list(zip(candidate_lines, max_similarities)))
 

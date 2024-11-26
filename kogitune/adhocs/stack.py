@@ -361,6 +361,10 @@ def init_once():
     global ONCE
     ONCE = {}
 
+def is_once(key):
+    global ONCE
+    return key not in ONCE
+
 def once(message: str, once=None):
     if once:
         once_key = once if isinstance(once, str) else message
@@ -900,12 +904,13 @@ class AdhocObject(object):
         return record(kwargs, *adhoc_keys, record_to=self, record_dic=pathargs)
 
     def load(self, scheme, path, **kwargs):
-        if isinstance(path, str) and '|' in path:
-            path = self.get(kwargs, path)
+        if isinstance(path, str):
+            if '|' in path or path in kwargs:
+                path = self.get(kwargs, path)
         try:
             obj = load(scheme, path, **kwargs)
         except KeyError as e:
-            obj = None
+             obj = None
         setattr(self, scheme, obj)
         if hasattr(self, "pathargs") and hasattr(obj, "encode_as_json"):
             self.pathargs[scheme] = obj.encode_as_json()
