@@ -210,7 +210,7 @@ class HFModel(HFBaseModel):
         self.lazy_load()
         gen_args = self.filter_gen_args(**kwargs)
         prompt = self.format_text_prompt(prompt)
-        adhoc.verbose_print(f'[フォーマットプロンプト]\n{prompt}', once="formatted_prompt")
+        adhoc.verbose_print(f'[prompt]\n{prompt}', once="formatted_prompt")
         model_inputs = self.tokenizer(prompt, 
                                     return_tensors="pt").to(self.model.device)
         if 'pad_token_id' not in gen_args:

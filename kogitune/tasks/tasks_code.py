@@ -5,7 +5,8 @@ from .tasks_textgen import TextGeneration
 class CodeEval(TextGeneration):
 
     def __init__(self, **kwargs):
-        self.chat_mode = adhoc.get(kwargs, 'chat_mode|=False')
+        if 'chat_mode' not in kwargs:
+            kwargs['chat_mode'] = False
         super().__init__(**kwargs)
         self.n = adhoc.get(kwargs, 'num_return_sequences|n|=1')
 
@@ -15,6 +16,7 @@ class CodeEval(TextGeneration):
         else:
             extractor = "extractor|=codex"
         self.extractor = adhoc.load('extractor', extractor, **kwargs)
+        #print('@@@init_extractor', self.chat_mode, self.extractor)
 
     def apply_template(self, sample:dict, template:dict):
         sample["_input"] = self.format(template, "prompt", sample)
