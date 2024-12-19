@@ -166,7 +166,7 @@ class _MaxMeanSim(Metric):
                 adhoc.verbose_print(candidate_line, '#', max_similarity, face=' ')
         self.is_once_verbose=False
 
-        self.append_results('_sim', list(zip(candidate_lines, max_similarities)))
+        self.samples.append(list(zip(candidate_lines, max_similarities)))
 
         # 最大類似度の平均を計算
         mean_similarity = sum(max_similarities) / len(max_similarities) if max_similarities else 0
