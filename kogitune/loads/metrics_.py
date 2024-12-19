@@ -92,6 +92,7 @@ class Metric(adhoc.AdhocObject):
 
     def finish_s(self):
         pass
+
     def calc_m(self, candidates:List[str], references:List[str], n=1, suffix='')->dict:
         scores = []
         for candidate, reference in zip(listfy(candidates), listfy(references)):
