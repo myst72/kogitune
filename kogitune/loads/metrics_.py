@@ -89,11 +89,14 @@ class Metric(adhoc.AdhocObject):
                 flat_references.extend(reference)
             return self.calc_m(flat_candidates, flat_references, n, suffix)
         return self.calc_m(candidates, references, 1, suffix)
-    
+
+    def finish_s(self):
+        pass
     def calc_m(self, candidates:List[str], references:List[str], n=1, suffix='')->dict:
         scores = []
         for candidate, reference in zip(listfy(candidates), listfy(references)):
             scores.append(self.calc_s(candidate, reference))
+        self.finish_s()
         return self.results(f"{self.nametag}{suffix}", 
                             ('mean', self.flatten_mean(scores, n))) 
 
@@ -135,10 +138,11 @@ class _MaxMeanSim(Metric):
         self.extractor = self.load('extractor', 'textsim_split|=lines', **kwargs)
         self.name = f"{self.inner.name}_{self.extractor.path}"
         self.is_once_verbose = True
+        self.samples = []
 
     def check(self, samples):
         return self.inner.check(samples)
-
+    
     def calc_s(self, candidate: str, reference: str) -> float:
         candidate_lines = self.extractor.extract(candidate)
         reference_lines = [s for s in set(self.extractor.extract(reference)) if len(s) > 1]
@@ -166,6 +170,20 @@ class _MaxMeanSim(Metric):
         # 最大類似度の平均を計算
         mean_similarity = sum(max_similarities) / len(max_similarities) if max_similarities else 0
         return mean_similarity
+
+    def finish_s(self):
+        d = {}
+        for sample in self.samples:
+            for line, maxsim in sample:
+                if line in d:
+                    d[line].append(maxsim)
+                else:
+                    d[line] = [maxsim]
+        results = []
+        for key in d:
+            results.append((key, np.mean(d[key])))
+        self.append_results('_sim', results)
+        self.samples = []
 
 @adhoc.reg('none')
 class NullMetric(Metric):
