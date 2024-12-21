@@ -6,8 +6,8 @@ from .tasks import Task
 class TextGeneration(Task):
 
     def __init__(self, **kwargs):
+        self.chat_mode = adhoc.get(kwargs, 'chat_mode|=True')
         super().__init__(**kwargs)
-        self.chat_mode = True
         self.name = f'{self.shots}-shot'
 
     def apply_template(self, sample:dict, template:dict):
@@ -21,7 +21,7 @@ class TextGeneration(Task):
             prompts = [f"{prompt}{self.extra_prompt}" for prompt in prompts]
         if self.chat_mode:
             prompts = model.transform_messages(prompts, heading=self.heading_messages)
-            adhoc.verbose_print('[Chat Message]', dump=prompts, once="chat_message")
+        adhoc.verbose_print(f'[chat_mode={self.chat_mode}]', dump=prompts, once="chat_message")
         gen_args = model.filter_gen_args(**self.init_kwargs)
         output_texts = model.generate(prompts, self.progress_bar, **gen_args)
         self.update_kwargs(samples, _model=model.modeltag, _task=self.name)

@@ -89,11 +89,20 @@ class Metric(adhoc.AdhocObject):
                 flat_references.extend(reference)
             return self.calc_m(flat_candidates, flat_references, n, suffix)
         return self.calc_m(candidates, references, 1, suffix)
-    
+
+    def finish_s(self):
+        pass
+
     def calc_m(self, candidates:List[str], references:List[str], n=1, suffix='')->dict:
         scores = []
+        # print('@candidates', len(candidates), candidates)
+        # print('@references', len(candidates), references)
+        c = 0
         for candidate, reference in zip(listfy(candidates), listfy(references)):
             scores.append(self.calc_s(candidate, reference))
+            c += 1
+            if c % n == 0:
+                self.finish_s()
         return self.results(f"{self.nametag}{suffix}", 
                             ('mean', self.flatten_mean(scores, n))) 
 
@@ -135,37 +144,54 @@ class _MaxMeanSim(Metric):
         self.extractor = self.load('extractor', 'textsim_split|=lines', **kwargs)
         self.name = f"{self.inner.name}_{self.extractor.path}"
         self.is_once_verbose = True
+        self.samples = []
 
     def check(self, samples):
         return self.inner.check(samples)
-
+    
     def calc_s(self, candidate: str, reference: str) -> float:
         candidate_lines = self.extractor.extract(candidate)
+        # print('@', candidate_lines)
         reference_lines = [s for s in set(self.extractor.extract(reference)) if len(s) > 1]
+        # print('@r', reference_lines)
 
         # 各行の最大類似度を計算
-        max_similarities = []
+        maxsims = []
         cache = {'': 1.0}
         if self.is_once_verbose:
             adhoc.verbose_print(f'[{self.name}] n_lines={len(reference_lines)}')
         for candidate_line in candidate_lines:
             if candidate_line in cache:
-                max_similarities.append(cache[candidate_line])
+                maxsims.append(cache[candidate_line])
                 continue
-            line_similarities = self.inner.calc_ss(candidate_line, reference_lines)
-            #line_similarities = [self.inner.calc_s(candidate_line, ref_line) for ref_line in reference_lines]
-            max_similarity = max(line_similarities) if line_similarities else 0  # 行ごとの最大値を取得
+            line_sims = self.inner.calc_ss(candidate_line, reference_lines)
+            max_similarity = max(line_sims) if line_sims else 0  # 行ごとの最大値を取得
             cache[candidate_line] = max_similarity
-            max_similarities.append(max_similarity)
+            maxsims.append(max_similarity)
             if self.is_once_verbose:
                 adhoc.verbose_print(candidate_line, '#', max_similarity, face=' ')
         self.is_once_verbose=False
-
-        self.append_results('_sim', list(zip(candidate_lines, max_similarities)))
+        # print('@@', list(zip(candidate_lines, maxsims)))
+        self.samples.append(list(zip(candidate_lines, maxsims)))
 
         # 最大類似度の平均を計算
-        mean_similarity = sum(max_similarities) / len(max_similarities) if max_similarities else 0
+        mean_similarity = sum(maxsims) / len(maxsims) if maxsims else 0
         return mean_similarity
+
+    def finish_s(self):
+        d = {}
+        for sample in self.samples:
+            for line, maxsim in sample:
+                if line in d:
+                    d[line].append(maxsim)
+                else:
+                    d[line] = [maxsim]
+        results = []
+        for key in d:
+            results.append((key, np.mean(d[key])))
+        self.append_results('_sim', results)
+        # print('@@@@', results)
+        self.samples = []
 
 @adhoc.reg('none')
 class NullMetric(Metric):

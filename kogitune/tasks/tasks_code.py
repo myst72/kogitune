@@ -5,7 +5,8 @@ from .tasks_textgen import TextGeneration
 class CodeEval(TextGeneration):
 
     def __init__(self, **kwargs):
-        self.chat_mode = adhoc.get(kwargs, 'chat_mode|=False')
+        if 'chat_mode' not in kwargs:
+            kwargs['chat_mode'] = False
         super().__init__(**kwargs)
         self.n = adhoc.get(kwargs, 'num_return_sequences|n|=1')
 
@@ -15,6 +16,7 @@ class CodeEval(TextGeneration):
         else:
             extractor = "extractor|=codex"
         self.extractor = adhoc.load('extractor', extractor, **kwargs)
+        #print('@@@init_extractor', self.chat_mode, self.extractor)
 
     def apply_template(self, sample:dict, template:dict):
         sample["_input"] = self.format(template, "prompt", sample)
@@ -23,13 +25,19 @@ class CodeEval(TextGeneration):
 
     def merge(self, prompts: List[str], tails: List[List[str]]):
         merged_list = []
+        if self.chat_mode: # chat_mode かどうかでデフォルトのextractor切り替え。
+            extractor_name = "python"
+        else:
+            extractor_name = "codex"
+        extractor = adhoc.load('extractor', self.init_kwargs.get('extractor', extractor_name))
         for prompt, output_texts in zip(prompts, tails):
             for output_text in listfy(output_texts):
-                code = self.extractor.extract(output_text)[0]
+                code = extractor.extract(output_text)[0]
                 if not self.chat_mode: # chat_modeでないときは、プロンプトを先頭につける
                     code = prompt + code
                 merged_list.append(code)
-        adhoc.verbose_print('[Extracted Code]', dump=merged_list)
+            adhoc.verbose_print(f'[extractor={extractor}]', f'\n{code}', 
+                                color='magenta', once=f'extractor={extractor}')
         return merged_list
 
     @property

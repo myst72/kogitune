@@ -58,8 +58,8 @@ class Task(adhoc.AdhocObject):
         else:
             template = self.guess_template(samples[0])
             if template:
-                adhoc.verbose_print('[推論されたテンプレート]', dump=template, once=True,
-                    if_dislike={'template_config': repr("(template.json)")})
+                adhoc.verbose_print('[テンプレート]', dump=template, once=True,
+                                    if_dislike={'template_config': repr("(template.json)")})
                 self.template = template
         if template:
             if self.shots > 0 and 'shots' in template and self.heading_messages is None:
@@ -115,8 +115,6 @@ class Task(adhoc.AdhocObject):
 
     def eval(self, model, samples: List[dict]):
         pass
-
-
 
     def calc(self, metric: Metric, samples: List[dict]):
         candidates = self.column_values(samples, "_output")
